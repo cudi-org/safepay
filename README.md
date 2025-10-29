@@ -14,8 +14,8 @@ We solve the two biggest problems in digital finance: **complexity** (Web3) and 
 
 Our conversational AI assistant, **Bulut** (meaning 'Cloud'), allows users to manage money using only natural language commands.
 
-* **Talk, Don't Tap:** Users can initiate payments or subscriptions by simply speaking or typing a phrase (e.g., "Pay 20 USDC to @friend for dinner," or "Activate monthly subscription").
-* **Voice UX:** (Powered by ElevenLabs) Bulut replies with voice confirmations, transforming complex *blockchain* actions into a simple conversation.
+* **Write, Don't Tap:** Users can initiate payments or subscriptions by simply typing a phrase (e.g., "Pay 20 USDC to @friend for dinner," or "Activate monthly subscription").
+
 
 ### 2. Frictionless Payments (0% Hassle)
 
@@ -35,6 +35,6 @@ CUDI SafePay is built using modern, highly performant technologies:
 * **Frontend:** Flutter (Mobile/Web UX)
 * **Backend/AI:** Python (FastAPI) and **Cloudflare Workers AI** (for low-latency NLP inference)
 * **Blockchain:** **Arc L1** (Settlement & USDC Gas) and **Circle Developer Wallets** (Security)
-* **Voice/UX:** **ElevenLabs** (Conversational Voice Synthesis)
+
 
 ---
