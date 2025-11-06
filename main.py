@@ -2,6 +2,7 @@
 Bulut Backend - FULLY FUNCTIONAL Production API
 Complete implementation with in-memory storage and mock services
 """
+from agent import AIAgent  # Bulut AI core logic
 
 import os
 import json
@@ -622,11 +623,12 @@ async def delete_alias(alias: str, signature: str = Header(..., alias="X-Signatu
 @app.post("/process_command", response_model=PaymentIntent)
 async def process_command(command: ProcessCommandRequest):
     """Process natural language command"""
-    intent = await MockAIAgent.parse_payment(
-        command.text,
-        command.user_id,
-        command.timezone
-    )
+    intent = await AIAgent.parse_payment(
+    command.text,
+    command.user_id,
+    command.timezone
+)
+
     return intent
 
 @app.post("/execute_payment", response_model=TransactionResponse)
