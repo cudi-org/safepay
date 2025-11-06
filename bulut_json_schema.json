@@ -1,0 +1,222 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "Bulut Payment Intent Schema",
+  "description": "Structured JSON schema for AI-generated payment commands",
+  "type": "object",
+  "required": ["payment_type", "intent", "confidence"],
+  "properties": {
+    "payment_type": {
+      "type": "string",
+      "enum": ["single", "subscription", "split"],
+      "description": "Type of payment transaction"
+    },
+    "intent": {
+      "type": "object",
+      "description": "Parsed payment details from natural language",
+      "required": ["action"],
+      "properties": {
+        "action": {
+          "type": "string",
+          "enum": ["send", "request", "schedule", "split"],
+          "description": "Primary action to perform"
+        },
+        "amount": {
+          "type": "number",
+          "minimum": 0,
+          "description": "Payment amount in base currency"
+        },
+        "currency": {
+          "type": "string",
+          "default": "USD",
+          "description": "Currency code (USD, EUR, ARC, etc.)"
+        },
+        "recipient": {
+          "type": "object",
+          "properties": {
+            "alias": {
+              "type": "string",
+              "pattern": "^@[a-zA-Z0-9_]{3,20}$",
+              "description": "Recipient alias (e.g., @alice)"
+            },
+            "address": {
+              "type": "string",
+              "description": "Blockchain wallet address (if provided)"
+            }
+          }
+        },
+        "recipients": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "properties": {
+              "alias": {
+                "type": "string",
+                "pattern": "^@[a-zA-Z0-9_]{3,20}$"
+              },
+              "address": {
+                "type": "string"
+              },
+              "amount": {
+                "type": "number",
+                "minimum": 0
+              },
+              "percentage": {
+                "type": "number",
+                "minimum": 0,
+                "maximum": 100
+              }
+            }
+          },
+          "description": "Multiple recipients for split payments"
+        },
+        "memo": {
+          "type": "string",
+          "maxLength": 200,
+          "description": "Optional payment description or note"
+        },
+        "subscription": {
+          "type": "object",
+          "properties": {
+            "frequency": {
+              "type": "string",
+              "enum": ["daily", "weekly", "monthly", "yearly"],
+              "description": "Recurring payment frequency"
+            },
+            "start_date": {
+              "type": "string",
+              "format": "date-time",
+              "description": "When subscription begins (ISO 8601)"
+            },
+            "end_date": {
+              "type": "string",
+              "format": "date-time",
+              "description": "When subscription ends (optional)"
+            },
+            "total_payments": {
+              "type": "integer",
+              "minimum": 1,
+              "description": "Total number of payments (alternative to end_date)"
+            }
+          }
+        },
+        "schedule": {
+          "type": "object",
+          "properties": {
+            "execute_at": {
+              "type": "string",
+              "format": "date-time",
+              "description": "When to execute the payment (ISO 8601)"
+            }
+          }
+        }
+      }
+    },
+    "confidence": {
+      "type": "number",
+      "minimum": 0,
+      "maximum": 1,
+      "description": "AI confidence score for the parsed intent (0-1)"
+    },
+    "requires_confirmation": {
+      "type": "boolean",
+      "default": true,
+      "description": "Whether user confirmation is needed before execution"
+    },
+    "parsed_entities": {
+      "type": "object",
+      "description": "Raw entities extracted from natural language",
+      "properties": {
+        "amounts": {
+          "type": "array",
+          "items": { "type": "number" }
+        },
+        "aliases": {
+          "type": "array",
+          "items": { "type": "string" }
+        },
+        "temporal_expressions": {
+          "type": "array",
+          "items": { "type": "string" }
+        }
+      }
+    },
+    "confirmation_text": {
+      "type": "string",
+      "description": "Human-readable confirmation message for the user"
+    },
+    "error": {
+      "type": "object",
+      "properties": {
+        "code": {
+          "type": "string",
+          "enum": ["ambiguous_intent", "missing_amount", "missing_recipient", "invalid_alias", "parsing_error"]
+        },
+        "message": {
+          "type": "string"
+        },
+        "suggestions": {
+          "type": "array",
+          "items": { "type": "string" }
+        }
+      },
+      "description": "Error details if parsing failed"
+    }
+  },
+  "examples": [
+    {
+      "payment_type": "single",
+      "intent": {
+        "action": "send",
+        "amount": 50,
+        "currency": "USD",
+        "recipient": {
+          "alias": "@alice"
+        },
+        "memo": "Lunch payment"
+      },
+      "confidence": 0.95,
+      "requires_confirmation": true,
+      "confirmation_text": "Send $50 to @alice for lunch payment?"
+    },
+    {
+      "payment_type": "subscription",
+      "intent": {
+        "action": "send",
+        "amount": 9.99,
+        "currency": "USD",
+        "recipient": {
+          "alias": "@netflix"
+        },
+        "subscription": {
+          "frequency": "monthly",
+          "start_date": "2025-11-01T00:00:00Z"
+        }
+      },
+      "confidence": 0.92,
+      "requires_confirmation": true,
+      "confirmation_text": "Set up monthly payment of $9.99 to @netflix starting November 1st?"
+    },
+    {
+      "payment_type": "split",
+      "intent": {
+        "action": "split",
+        "amount": 120,
+        "currency": "USD",
+        "recipients": [
+          {
+            "alias": "@bob",
+            "percentage": 50
+          },
+          {
+            "alias": "@carol",
+            "percentage": 50
+          }
+        ],
+        "memo": "Dinner split"
+      },
+      "confidence": 0.89,
+      "requires_confirmation": true,
+      "confirmation_text": "Split $120 equally between @bob and @carol for dinner?"
+    }
+  ]
+}

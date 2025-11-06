@@ -1,0 +1,105 @@
+version: '3.8'
+
+services:
+  # Bulut Backend API
+  backend:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: bulut-backend
+    ports:
+      - "8000:8000"
+    environment:
+      - APP_ENV=development
+      - AI_AGENT_URL=http://ai-agent:8001
+      - DATABASE_URL=postgresql+asyncpg://bulut:password@postgres:5432/bulut
+      - REDIS_URL=redis://redis:6379/0
+    env_file:
+      - .env
+    volumes:
+      - .:/app
+    depends_on:
+      - postgres
+      - redis
+      - ai-agent
+    command: uvicorn main:app --host 0.0.0.0 --port 8000 --reload
+    networks:
+      - bulut-network
+
+  # AI Agent Service
+  ai-agent:
+    build:
+      context: ./ai-agent
+      dockerfile: Dockerfile
+    container_name: bulut-ai-agent
+    ports:
+      - "8001:8001"
+    environment:
+      - ANTHROPIC_API_KEY=${ANTHROPIC_API_KEY}
+    env_file:
+      - .env
+    volumes:
+      - ./ai-agent:/app
+    command: uvicorn ai_agent:app --host 0.0.0.0 --port 8001 --reload
+    networks:
+      - bulut-network
+
+  # PostgreSQL Database
+  postgres:
+    image: postgres:16-alpine
+    container_name: bulut-postgres
+    ports:
+      - "5432:5432"
+    environment:
+      - POSTGRES_USER=bulut
+      - POSTGRES_PASSWORD=password
+      - POSTGRES_DB=bulut
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+      - ./init.sql:/docker-entrypoint-initdb.d/init.sql
+    networks:
+      - bulut-network
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U bulut"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  # Redis (for rate limiting and caching)
+  redis:
+    image: redis:7-alpine
+    container_name: bulut-redis
+    ports:
+      - "6379:6379"
+    volumes:
+      - redis_data:/data
+    networks:
+      - bulut-network
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  # Nginx (Optional - for production)
+  nginx:
+    image: nginx:alpine
+    container_name: bulut-nginx
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      - ./nginx.conf:/etc/nginx/nginx.conf
+      - ./ssl:/etc/nginx/ssl
+    depends_on:
+      - backend
+    networks:
+      - bulut-network
+
+volumes:
+  postgres_data:
+  redis_data:
+
+networks:
+  bulut-network:
+    driver: bridge
