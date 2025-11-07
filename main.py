@@ -29,10 +29,10 @@ from eth_account.messages import encode_defunct
 
 # Import agent functionality
 try:
-    from agent import BulutAIAgent
+    from agent import parse_payment_command
 except ImportError:
-    print("⚠️  Warning: agent.py not found, using mock agent")
-    BulutAIAgent = None
+    print("🚨 CRITICAL: agent.py not found. AI endpoints will fail.")
+    parse_payment_command = None
 
 # ============================================================================
 # CONFIGURATION
@@ -440,6 +440,131 @@ async def general_exception_handler(request: Request, exc: Exception):
     return JSONResponse(status_code=500,
                         content={"error": {"code": "internal_error", "message": str(exc)},
                                  "timestamp": datetime.utcnow().isoformat()})
+# ============================================================================
+# RUTAS DE IA Y PAGO (¡ESTO FALTABA!)
+# ============================================================================
+
+@app.post("/process_command", response_model=PaymentIntent)
+async def process_bulut_command(command: ProcessCommandRequest):
+    """
+    Toma un comando de chat en lenguaje natural (ej. "enviar $15 a @elias")
+    y lo procesa usando el AI Agent, devolviendo un JSON de PaymentIntent.
+    """
+    if not parse_payment_command:
+        raise HTTPException(status_code=503, detail="AI agent is not configured or agent.py is missing.")
+    
+    try:
+        # La función 'parse_payment_command' usa la IA real o el Mock
+        # automáticamente, basándose en la API key.
+        intent_data = await parse_payment_command(
+            text=command.text,
+            user_id=command.user_id,
+            timezone=command.timezone
+        )
+        
+        if intent_data.get("error"):
+            print(f"❌ AI Parsing Error: {intent_data.get('error')}")
+            raise HTTPException(status_code=400, detail=intent_data.get("error"))
+
+        # Guardamos la intención para futura referencia (opcional, pero buena práctica)
+        intent_id = "intent_" + uuid.uuid4().hex[:16]
+        storage.payment_intents[intent_id] = intent_data
+        
+        # Devolvemos el PaymentIntent (Pydantic se encarga de validar)
+        return PaymentIntent(**intent_data)
+
+    except Exception as e:
+        print(f"❌ /process_command Error: {str(e)}")
+        raise HTTPException(status_code=500, detail=f"Error processing command: {str(e)}")
+
+
+@app.post("/execute_payment", response_model=TransactionResponse)
+async def execute_bulut_payment(request: ExecutePaymentRequest, user_address_header: str = Header(..., alias="X-Wallet-Address")):
+    """
+    Ejecuta una transacción que ha sido confirmada por el usuario.
+    Esto es llamado por el frontend después del PIN/Biometría.
+    """
+    intent = request.payment_intent
+    payment_type = intent.payment_type
+    intent_data = intent.intent
+    
+    # Verificación de seguridad simple
+    if user_address_header.lower() != request.user_address.lower():
+        raise HTTPException(status_code=403, detail="Header address does not match request body address.")
+
+    try:
+        # 1. Resolver alias a direcciones
+        to_address = None
+        if "recipient" in intent_data and "alias" in intent_data["recipient"]:
+            alias = intent_data["recipient"]["alias"].lower()
+            to_address = await alias_service.resolve(alias)
+            if not to_address:
+                raise HTTPException(status_code=404, detail={"error": "recipient_not_found", "alias": alias})
+            intent_data["recipient"]["address"] = to_address
+        
+        # 2. Ejecutar la transacción en la blockchain
+        tx_result = {}
+        
+        if payment_type == "single":
+            tx_result = await blockchain_service.send_payment(
+                from_address=request.user_address,
+                to_address=to_address,
+                amount=intent_data.get("amount", 0.0),
+                currency=intent_data.get("currency", "ARC"),
+                memo=intent_data.get("memo"),
+                signature=request.user_signature
+            )
+        
+        elif payment_type == "subscription":
+            tx_result = await blockchain_service.create_subscription(
+                from_address=request.user_address,
+                to_address=to_address,
+                amount=intent_data.get("amount", 0.0),
+                frequency=intent_data.get("subscription", {}).get("frequency", "monthly"),
+                start_date=intent_data.get("subscription", {}).get("start_date", datetime.utcnow().isoformat()),
+                signature=request.user_signature
+            )
+        
+        elif payment_type == "split":
+            # (Lógica de split más compleja iría aquí)
+            raise HTTPException(status_code=501, detail="Split payments not yet implemented in this endpoint.")
+        
+        else:
+            raise HTTPException(status_code=400, detail=f"Unknown payment type: {payment_type}")
+
+        if not tx_result.get("success"):
+            raise Exception(tx_result.get("error", "Blockchain transaction failed"))
+
+        # 3. Registrar la transacción
+        log_data = {
+            "transaction_hash": tx_result.get("transaction_hash"),
+            "from_address": request.user_address.lower(),
+            "to_address": to_address.lower() if to_address else "contract",
+            "amount": intent_data.get("amount"),
+            "currency": intent_data.get("currency", "ARC"),
+            "payment_type": payment_type,
+            "status": "success",
+            "memo": intent_data.get("memo")
+        }
+        await transaction_service.log(log_data)
+        
+        return TransactionResponse(
+            success=True,
+            transaction_hash=tx_result.get("transaction_hash"),
+            timestamp=tx_result.get("timestamp", datetime.utcnow().isoformat()),
+            amount=intent_data.get("amount"),
+            from_address=request.user_address,
+            to_address=to_address,
+            explorer_url=tx_result.get("explorer_url")
+        )
+
+    except Exception as e:
+        print(f"❌ /execute_payment Error: {str(e)}")
+        return TransactionResponse(
+            success=False,
+            timestamp=datetime.utcnow().isoformat(),
+            error=str(e)
+        )
 
 # ============================================================================
 # STARTUP
@@ -448,4 +573,5 @@ async def general_exception_handler(request: Request, exc: Exception):
 if __name__ == "__main__":
     import uvicorn
     uvicorn.run("main:app", host=config.HOST, port=config.PORT, reload=config.DEBUG)
+
 
