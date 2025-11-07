@@ -225,6 +225,22 @@ class AliasService:
         del storage.address_to_alias[address]
         return True
 
+    @staticmethod
+    async def search(query: str, limit: int = 10) -> List[Dict]:
+        query = query.lower()
+        if query.startswith('@'):
+            query = query[1:]
+
+        matches = []
+        for alias, address in storage.alias_to_address.items():
+            if alias.startswith(f"@{query}"):
+                matches.append({"alias": alias, "address": address})
+            
+            if len(matches) >= limit:
+                break
+        
+        return matches
+
 class BlockchainService:
     def __init__(self, rpc_url: str, usdc_contract_address: str, gas_payer_key: str):
         self.rpc_url = rpc_url
@@ -321,9 +337,6 @@ alias_service = AliasService()
 blockchain_service = BlockchainService(config.ARC_RPC_URL, config.ARC_USDC_ADDRESS, config.GAS_PAYER_KEY)
 transaction_service = TransactionService()
 
-# This is a bit of a placeholder, as the original code had a try/except
-# that depended on another file (agent.py) defining BulutAIAgent.
-# Without that file, ai_agent would be None.
 ai_agent = None 
 if parse_payment_command:
     print("✅ AI parsing function is available.")
@@ -371,6 +384,14 @@ async def get_alias(alias: str):
 @app.get("/address/{address}/alias")
 async def get_address_alias(address: str):
     return {"address": address, "alias": await alias_service.get_alias(address)}
+
+@app.get("/alias/search")
+async def search_aliases(query: str, limit: int = 10):
+    if len(query) < 2:
+        return []
+    
+    aliases = await alias_service.search(query, limit)
+    return aliases
 
 @app.delete("/alias/{alias}")
 async def delete_alias(alias: str, signature: str = Header(..., alias="X-Signature")):
