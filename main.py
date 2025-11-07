@@ -1,7 +1,3 @@
-"""
-Bulut Backend - FULLY FUNCTIONAL Production API (with Web3 Integration)
-"""
-
 import os
 import json
 import hashlib
@@ -22,76 +18,54 @@ except ImportError as e:
     print("📦 Install with: pip install fastapi uvicorn pydantic httpx")
     exit(1)
 
-# Web3 (Blockchain Real)
 from web3 import Web3
 from eth_account import Account
 from eth_account.messages import encode_defunct
 
-# Import agent functionality
 try:
     from agent import parse_payment_command
 except ImportError:
     print("🚨 CRITICAL: agent.py not found. AI endpoints will fail.")
     parse_payment_command = None
 
-# ============================================================================
-# CONFIGURATION
-# ============================================================================
-
 class Config:
-    """Application configuration with API URLs"""
-    
-    # Application Info
     API_VERSION = "v1"
     APP_NAME = "Bulut API"
     ENVIRONMENT = os.getenv("APP_ENV", "development")
     DEBUG = os.getenv("DEBUG", "true").lower() == "true"
     
-    # Server Configuration
     HOST = os.getenv("HOST", "0.0.0.0")
     PORT = int(os.getenv("PORT") or 8000)
-
     
-    # External API URLs
     ANTHROPIC_API_KEY = os.getenv("ANTHROPIC_API_KEY", "")
     ANTHROPIC_API_URL = os.getenv("ANTHROPIC_API_URL", "https://api.anthropic.com/v1")
     
-    # Arc Blockchain URLs
     ARC_RPC_URL = os.getenv("ARC_RPC_URL", "https://mainnet.arc.network")
     ARC_EXPLORER_URL = os.getenv("ARC_EXPLORER_URL", "https://explorer.arc.network")
     ARC_CONTRACT_ADDRESS = os.getenv("ARC_CONTRACT_ADDRESS", "0xBulutContract123")
     ARC_CHAIN_ID = int(os.getenv("ARC_CHAIN_ID", "4224"))
     
-    # Gas payer and token address
     GAS_PAYER_KEY = os.getenv("GAS_PAYER_KEY", "")
     ARC_USDC_ADDRESS = os.getenv("ARC_USDC_ADDRESS", "0xA0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48")
     
-    # ElevenLabs Voice API (Optional)
     ELEVENLABS_API_KEY = os.getenv("ELEVENLABS_API_KEY", "")
     ELEVENLABS_API_URL = os.getenv("ELEVENLABS_API_URL", "https://api.elevenlabs.io/v1")
     
-    # Internal Services
     AI_AGENT_URL = os.getenv("AI_AGENT_URL", "http://localhost:8001")
     
-    # Security
     JWT_SECRET = os.getenv("JWT_SECRET", "dev-secret-change-in-production")
     ALLOWED_ORIGINS = os.getenv("ALLOWED_ORIGINS", "*").split(",")
     
-    # Database (Optional)
     DATABASE_URL = os.getenv("DATABASE_URL", "sqlite:///./bulut.db")
     
-    # Redis (Optional)
     REDIS_URL = os.getenv("REDIS_URL", "redis://localhost:6379/0")
     
-    # Alias validation
     MIN_ALIAS_LENGTH = 3
     MAX_ALIAS_LENGTH = 20
     ALIAS_PATTERN = r'^@[a-zA-Z0-9_]{3,20}$'
     
-    # Rate Limiting
     RATE_LIMIT_ENABLED = os.getenv("RATE_LIMIT_ENABLED", "false").lower() == "true"
     
-    # Logging
     LOG_LEVEL = os.getenv("LOG_LEVEL", "INFO")
     
     @classmethod
@@ -108,10 +82,6 @@ class Config:
         }
 
 config = Config()
-
-# ============================================================================
-# DATA MODELS
-# ============================================================================
 
 class PaymentIntent(BaseModel):
     payment_type: str
@@ -166,10 +136,6 @@ class HealthResponse(BaseModel):
     services: Dict[str, str]
     stats: Dict[str, int]
 
-# ============================================================================
-# IN-MEMORY STORAGE
-# ============================================================================
-
 class InMemoryStorage:
     def __init__(self):
         self.alias_to_address: Dict[str, str] = {}
@@ -199,19 +165,36 @@ class InMemoryStorage:
 
 storage = InMemoryStorage()
 
-# ============================================================================
-# SERVICES
-# ============================================================================
-
 class AliasService:
     @staticmethod
     async def register(alias: str, address: str, signature: str) -> Dict:
         alias = alias.lower()
         address = address.lower()
+
+        try:
+            message_to_sign = f"Estoy registrando el alias {alias} para la dirección {address}"
+            message_hash = encode_defunct(text=message_to_sign)
+            recovered_address = Account.recover_message(message_hash, signature=signature)
+            
+            if recovered_address.lower() != address.lower():
+                raise ValueError("La firma no coincide con la dirección.")
+
+        except ValueError as e:
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN, 
+                detail={"error": "invalid_signature", "message": str(e)}
+            )
+        except Exception as e:
+             raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST, 
+                detail={"error": "signature_error", "message": f"Error al procesar la firma: {str(e)}"}
+            )
+
         if alias in storage.alias_to_address:
             raise HTTPException(status_code=409, detail={"error": "alias_exists"})
         if address in storage.address_to_alias:
             raise HTTPException(status_code=409, detail={"error": "address_has_alias"})
+        
         storage.alias_to_address[alias] = address
         storage.address_to_alias[address] = alias
         storage.alias_metadata[alias] = {
@@ -242,13 +225,7 @@ class AliasService:
         del storage.address_to_alias[address]
         return True
 
-# ============================================================================
-# BLOCKCHAIN SERVICE (Web3 REAL)
-# ============================================================================
-
 class BlockchainService:
-    """Real blockchain service using Web3.py"""
-
     def __init__(self, rpc_url: str, usdc_contract_address: str, gas_payer_key: str):
         self.rpc_url = rpc_url
         self.web3 = Web3(Web3.HTTPProvider(rpc_url))
@@ -294,7 +271,7 @@ class BlockchainService:
             return {"success": False, "error": str(e), "timestamp": datetime.utcnow().isoformat()}
 
     async def create_subscription(self, from_address: str, to_address: str, amount: float,
-                                  frequency: str, start_date: str, signature: str) -> Dict:
+                                    frequency: str, start_date: str, signature: str) -> Dict:
         sub_id = "sub_" + hashlib.sha256(f"{from_address}{to_address}{datetime.utcnow()}".encode()).hexdigest()[:16]
         tx_hash = "0x" + uuid.uuid4().hex
         storage.subscriptions[sub_id] = {
@@ -316,10 +293,6 @@ class BlockchainService:
         return {"success": True, "transaction_hash": tx_hash,
                 "recipient_count": len(recipients), "total_amount": total_amount,
                 "status": "confirmed", "explorer_url": self._get_explorer_url(tx_hash)}
-
-# ============================================================================
-# TRANSACTION SERVICE
-# ============================================================================
 
 class TransactionService:
     @staticmethod
@@ -344,24 +317,19 @@ class TransactionService:
     async def get_transaction(tx_hash: str) -> Optional[Dict]:
         return storage.transaction_index.get(tx_hash)
 
-# ============================================================================
-# INITIALIZATION
-# ============================================================================
-
 alias_service = AliasService()
 blockchain_service = BlockchainService(config.ARC_RPC_URL, config.ARC_USDC_ADDRESS, config.GAS_PAYER_KEY)
 transaction_service = TransactionService()
 
-if BulutAIAgent and config.ANTHROPIC_API_KEY:
-    ai_agent = BulutAIAgent(api_key=config.ANTHROPIC_API_KEY)
-    print("✅ Bulut AI Agent initialized with Claude")
+# This is a bit of a placeholder, as the original code had a try/except
+# that depended on another file (agent.py) defining BulutAIAgent.
+# Without that file, ai_agent would be None.
+ai_agent = None 
+if parse_payment_command:
+    print("✅ AI parsing function is available.")
 else:
-    ai_agent = None
-    print("⚠️ Using mock AI agent")
+    print("⚠️ AI parsing function is missing.")
 
-# ============================================================================
-# FASTAPI APP
-# ============================================================================
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
@@ -377,10 +345,6 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
-
-# ============================================================================
-# ROUTES
-# ============================================================================
 
 @app.get("/")
 async def root():
@@ -426,10 +390,6 @@ async def get_transaction(tx_hash: str):
         raise HTTPException(404, detail={"error": "transaction_not_found"})
     return tx
 
-# ============================================================================
-# ERROR HANDLERS
-# ============================================================================
-
 @app.exception_handler(HTTPException)
 async def http_exception_handler(request: Request, exc: HTTPException):
     return JSONResponse(status_code=exc.status_code,
@@ -440,22 +400,13 @@ async def general_exception_handler(request: Request, exc: Exception):
     return JSONResponse(status_code=500,
                         content={"error": {"code": "internal_error", "message": str(exc)},
                                  "timestamp": datetime.utcnow().isoformat()})
-# ============================================================================
-# RUTAS DE IA Y PAGO (¡ESTO FALTABA!)
-# ============================================================================
 
 @app.post("/process_command", response_model=PaymentIntent)
 async def process_bulut_command(command: ProcessCommandRequest):
-    """
-    Toma un comando de chat en lenguaje natural (ej. "enviar $15 a @elias")
-    y lo procesa usando el AI Agent, devolviendo un JSON de PaymentIntent.
-    """
     if not parse_payment_command:
         raise HTTPException(status_code=503, detail="AI agent is not configured or agent.py is missing.")
     
     try:
-        # La función 'parse_payment_command' usa la IA real o el Mock
-        # automáticamente, basándose en la API key.
         intent_data = await parse_payment_command(
             text=command.text,
             user_id=command.user_id,
@@ -466,11 +417,9 @@ async def process_bulut_command(command: ProcessCommandRequest):
             print(f"❌ AI Parsing Error: {intent_data.get('error')}")
             raise HTTPException(status_code=400, detail=intent_data.get("error"))
 
-        # Guardamos la intención para futura referencia (opcional, pero buena práctica)
         intent_id = "intent_" + uuid.uuid4().hex[:16]
         storage.payment_intents[intent_id] = intent_data
         
-        # Devolvemos el PaymentIntent (Pydantic se encarga de validar)
         return PaymentIntent(**intent_data)
 
     except Exception as e:
@@ -480,20 +429,14 @@ async def process_bulut_command(command: ProcessCommandRequest):
 
 @app.post("/execute_payment", response_model=TransactionResponse)
 async def execute_bulut_payment(request: ExecutePaymentRequest, user_address_header: str = Header(..., alias="X-Wallet-Address")):
-    """
-    Ejecuta una transacción que ha sido confirmada por el usuario.
-    Esto es llamado por el frontend después del PIN/Biometría.
-    """
     intent = request.payment_intent
     payment_type = intent.payment_type
     intent_data = intent.intent
     
-    # Verificación de seguridad simple
     if user_address_header.lower() != request.user_address.lower():
         raise HTTPException(status_code=403, detail="Header address does not match request body address.")
 
     try:
-        # 1. Resolver alias a direcciones
         to_address = None
         if "recipient" in intent_data and "alias" in intent_data["recipient"]:
             alias = intent_data["recipient"]["alias"].lower()
@@ -502,7 +445,6 @@ async def execute_bulut_payment(request: ExecutePaymentRequest, user_address_hea
                 raise HTTPException(status_code=404, detail={"error": "recipient_not_found", "alias": alias})
             intent_data["recipient"]["address"] = to_address
         
-        # 2. Ejecutar la transacción en la blockchain
         tx_result = {}
         
         if payment_type == "single":
@@ -526,7 +468,6 @@ async def execute_bulut_payment(request: ExecutePaymentRequest, user_address_hea
             )
         
         elif payment_type == "split":
-            # (Lógica de split más compleja iría aquí)
             raise HTTPException(status_code=501, detail="Split payments not yet implemented in this endpoint.")
         
         else:
@@ -535,7 +476,6 @@ async def execute_bulut_payment(request: ExecutePaymentRequest, user_address_hea
         if not tx_result.get("success"):
             raise Exception(tx_result.get("error", "Blockchain transaction failed"))
 
-        # 3. Registrar la transacción
         log_data = {
             "transaction_hash": tx_result.get("transaction_hash"),
             "from_address": request.user_address.lower(),
@@ -566,12 +506,6 @@ async def execute_bulut_payment(request: ExecutePaymentRequest, user_address_hea
             error=str(e)
         )
 
-# ============================================================================
-# STARTUP
-# ============================================================================
-
 if __name__ == "__main__":
     import uvicorn
     uvicorn.run("main:app", host=config.HOST, port=config.PORT, reload=config.DEBUG)
-
-
