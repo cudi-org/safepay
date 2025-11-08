@@ -110,7 +110,7 @@ Remember: Accuracy > Speed. Better to ask for clarification than execute wrong p
 
     def __init__(self, api_key: str):
         if not api_key:
-            raise ValueError("API Key (ANTHROPIC_API_KEY) no encontrada. Revisa tu .env")
+            raise ValueError("API Key (AIMLAPI_KEY) no encontrada. Revisa tu .env")
         if not OpenAI:
             raise ImportError("openai package not installed. Run: pip install openai")
         self.client = OpenAI(base_url="https://api.aimlapi.com/v1", api_key=api_key)
@@ -215,7 +215,7 @@ class MockAIParser:
         }
 
 async def parse_payment_command(text: str, api_key: Optional[str] = None, user_id: Optional[str] = None, timezone: str = "UTC") -> Dict[str, Any]:
-    api_key = api_key or os.getenv("ANTHROPIC_API_KEY")
+    api_key = api_key or os.getenv("AIMLAPI_KEY")
     if api_key and OpenAI:
         agent = RealAIAgent(api_key=api_key)
         return await agent.parse_payment(text, user_id, timezone)
@@ -229,12 +229,12 @@ if __name__ == "__main__":
     print("=" * 70)
     test_commands = ["Send $50 to @alice for lunch", "Split $120 between @bob and @carol", "Pay @netflix $9.99 every month"]
     async def run_tests():
-        api_key = os.getenv("ANTHROPIC_API_KEY")
+        api_key = os.getenv("AIMLAPI_KEY")
         if api_key and OpenAI:
             print("\n✅ Using Real AI Agent (aimlapi.com)")
         else:
             print("\n⚠️  Using Mock Parser (No API key found or 'openai' not installed)")
-            print("Set ANTHROPIC_API_KEY environment variable to use Real AI\n")
+            print("Set AIMLAPI_KEY environment variable to use Real AI\n")
         for i, command in enumerate(test_commands, 1):
             print(f"\n{'─'*70}\nTest {i}: {command}\n{'─'*70}")
             result = await parse_payment_command(command)
