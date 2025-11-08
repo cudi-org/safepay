@@ -22,12 +22,22 @@ from web3 import Web3
 from eth_account import Account
 from eth_account.messages import encode_defunct
 
+# --- ARQUITECTURA LIMPIA ---
 try:
     from agent import parse_payment_command
 except ImportError:
     print("🚨 CRITICAL: agent.py not found. AI endpoints will fail.")
     parse_payment_command = None
 
+try:
+    from blockchain_service import BlockchainService
+except ImportError:
+    print("🚨 CRITICAL: blockchain_service.py not found. Blockchain endpoints will fail.")
+    BlockchainService = None 
+
+# ============================================================================
+# CONFIGURATION
+# ============================================================================
 class Config:
     API_VERSION = "v1"
     APP_NAME = "Bulut API"
@@ -83,6 +93,9 @@ class Config:
 
 config = Config()
 
+# ============================================================================
+# DATA MODELS
+# ============================================================================
 class PaymentIntent(BaseModel):
     payment_type: str
     intent: Dict[str, Any]
@@ -136,6 +149,9 @@ class HealthResponse(BaseModel):
     services: Dict[str, str]
     stats: Dict[str, int]
 
+# ============================================================================
+# IN-MEMORY STORAGE
+# ============================================================================
 class InMemoryStorage:
     def __init__(self):
         self.alias_to_address: Dict[str, str] = {}
@@ -165,6 +181,9 @@ class InMemoryStorage:
 
 storage = InMemoryStorage()
 
+# ============================================================================
+# SERVICES
+# ============================================================================
 class AliasService:
     @staticmethod
     async def register(alias: str, address: str, signature: str) -> Dict:
@@ -241,75 +260,6 @@ class AliasService:
         
         return matches
 
-class BlockchainService:
-    def __init__(self, rpc_url: str, usdc_contract_address: str, gas_payer_key: str):
-        self.rpc_url = rpc_url
-        self.web3 = Web3(Web3.HTTPProvider(rpc_url))
-        self.usdc_contract_address = Web3.to_checksum_address(usdc_contract_address)
-        self.gas_payer = Account.from_key(gas_payer_key) if gas_payer_key else None
-
-        if not self.web3.is_connected():
-            print("⚠️ Web3 not connected to network:", rpc_url)
-        else:
-            print(f"✅ Connected to chain ID: {self.web3.eth.chain_id}")
-
-    def _get_explorer_url(self, tx_hash: str) -> str:
-        return f"{config.ARC_EXPLORER_URL}/tx/{tx_hash}"
-
-    async def send_payment(self, from_address: str, to_address: str, amount: float,
-                           currency: str = "ARC", memo: Optional[str] = None, signature: str = None) -> Dict:
-        try:
-            from_addr = Web3.to_checksum_address(from_address)
-            to_addr = Web3.to_checksum_address(to_address)
-            value_wei = self.web3.to_wei(amount, "ether")
-            nonce = self.web3.eth.get_transaction_count(self.gas_payer.address if self.gas_payer else from_addr)
-            tx = {
-                "nonce": nonce,
-                "to": to_addr,
-                "value": value_wei,
-                "gas": 21000,
-                "gasPrice": self.web3.eth.gas_price,
-                "chainId": config.ARC_CHAIN_ID,
-            }
-            if not self.gas_payer:
-                raise Exception("Gas payer key not configured")
-            signed_tx = self.gas_payer.sign_transaction(tx)
-            tx_hash = self.web3.eth.send_raw_transaction(signed_tx.rawTransaction)
-            tx_hash_hex = tx_hash.hex()
-            return {
-                "success": True,
-                "transaction_hash": tx_hash_hex,
-                "status": "submitted",
-                "explorer_url": self._get_explorer_url(tx_hash_hex),
-                "timestamp": datetime.utcnow().isoformat()
-            }
-        except Exception as e:
-            return {"success": False, "error": str(e), "timestamp": datetime.utcnow().isoformat()}
-
-    async def create_subscription(self, from_address: str, to_address: str, amount: float,
-                                    frequency: str, start_date: str, signature: str) -> Dict:
-        sub_id = "sub_" + hashlib.sha256(f"{from_address}{to_address}{datetime.utcnow()}".encode()).hexdigest()[:16]
-        tx_hash = "0x" + uuid.uuid4().hex
-        storage.subscriptions[sub_id] = {
-            "id": sub_id,
-            "from_address": from_address,
-            "to_address": to_address,
-            "amount": amount,
-            "frequency": frequency,
-            "start_date": start_date,
-            "status": "active",
-            "created_at": datetime.utcnow().isoformat()
-        }
-        return {"success": True, "subscription_id": sub_id, "transaction_hash": tx_hash,
-                "explorer_url": self._get_explorer_url(tx_hash)}
-
-    async def split_payment(self, from_address: str, recipients: List[Dict],
-                            total_amount: float, memo: Optional[str], signature: str) -> Dict:
-        tx_hash = "0x" + uuid.uuid4().hex
-        return {"success": True, "transaction_hash": tx_hash,
-                "recipient_count": len(recipients), "total_amount": total_amount,
-                "status": "confirmed", "explorer_url": self._get_explorer_url(tx_hash)}
-
 class TransactionService:
     @staticmethod
     async def log(tx_data: Dict) -> str:
@@ -333,9 +283,22 @@ class TransactionService:
     async def get_transaction(tx_hash: str) -> Optional[Dict]:
         return storage.transaction_index.get(tx_hash)
 
+# ============================================================================
+# INITIALIZATION
+# ============================================================================
+
 alias_service = AliasService()
-blockchain_service = BlockchainService(config.ARC_RPC_URL, config.ARC_USDC_ADDRESS, config.GAS_PAYER_KEY)
 transaction_service = TransactionService()
+
+if BlockchainService:
+    blockchain_service = BlockchainService(
+        rpc_url=config.ARC_RPC_URL, 
+        usdc_contract_address=config.ARC_USDC_ADDRESS, 
+        gas_payer_key=config.GAS_PAYER_KEY,
+        storage_instance=storage
+    )
+else:
+    blockchain_service = None
 
 ai_agent = None 
 if parse_payment_command:
@@ -359,6 +322,10 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
+# ============================================================================
+# ROUTES
+# ============================================================================
+
 @app.get("/")
 async def root():
     return {"service": config.APP_NAME, "version": config.API_VERSION, "docs": "/docs"}
@@ -367,9 +334,10 @@ async def root():
 async def health():
     return HealthResponse(status="healthy", timestamp=datetime.utcnow().isoformat(),
         version=config.API_VERSION, environment=config.ENVIRONMENT,
-        services={"api": "operational", "blockchain": "ok"},
+        services={"api": "operational", "blockchain": "ok" if blockchain_service else "failed"},
         stats={"aliases": len(storage.alias_to_address), "transactions": len(storage.transactions)})
 
+# --- ALIAS MANAGEMENT ROUTES ---
 @app.post("/alias/register", status_code=201)
 async def register_alias(registration: AliasRegistration):
     return await alias_service.register(registration.alias, registration.address, registration.signature)
@@ -400,6 +368,7 @@ async def delete_alias(alias: str, signature: str = Header(..., alias="X-Signatu
         raise HTTPException(404, detail={"error": "alias_not_found"})
     return {"success": True, "message": f"Alias {alias} deleted"}
 
+# --- TRANSACTION & HISTORY ROUTES ---
 @app.get("/history/{address}")
 async def get_history(address: str, limit: int = 50, offset: int = 0):
     return await transaction_service.get_history(address, limit, offset)
@@ -411,6 +380,7 @@ async def get_transaction(tx_hash: str):
         raise HTTPException(404, detail={"error": "transaction_not_found"})
     return tx
 
+# --- ERROR HANDLERS ---
 @app.exception_handler(HTTPException)
 async def http_exception_handler(request: Request, exc: HTTPException):
     return JSONResponse(status_code=exc.status_code,
@@ -422,6 +392,7 @@ async def general_exception_handler(request: Request, exc: Exception):
                         content={"error": {"code": "internal_error", "message": str(exc)},
                                  "timestamp": datetime.utcnow().isoformat()})
 
+# --- AI & PAYMENT EXECUTION ---
 @app.post("/process_command", response_model=PaymentIntent)
 async def process_bulut_command(command: ProcessCommandRequest):
     if not parse_payment_command:
@@ -450,6 +421,9 @@ async def process_bulut_command(command: ProcessCommandRequest):
 
 @app.post("/execute_payment", response_model=TransactionResponse)
 async def execute_bulut_payment(request: ExecutePaymentRequest, user_address_header: str = Header(..., alias="X-Wallet-Address")):
+    if not blockchain_service:
+        raise HTTPException(status_code=503, detail="Blockchain service is not initialized.")
+
     intent = request.payment_intent
     payment_type = intent.payment_type
     intent_data = intent.intent
@@ -489,7 +463,13 @@ async def execute_bulut_payment(request: ExecutePaymentRequest, user_address_hea
             )
         
         elif payment_type == "split":
-            raise HTTPException(status_code=501, detail="Split payments not yet implemented in this endpoint.")
+            tx_result = await blockchain_service.split_payment(
+                from_address=request.user_address,
+                recipients=intent_data.get("recipients", []),
+                total_amount=intent_data.get("amount", 0.0),
+                memo=intent_data.get("memo"),
+                signature=request.user_signature
+            )
         
         else:
             raise HTTPException(status_code=400, detail=f"Unknown payment type: {payment_type}")
@@ -526,6 +506,10 @@ async def execute_bulut_payment(request: ExecutePaymentRequest, user_address_hea
             timestamp=datetime.utcnow().isoformat(),
             error=str(e)
         )
+
+# ============================================================================
+# STARTUP
+# ============================================================================
 
 if __name__ == "__main__":
     import uvicorn
