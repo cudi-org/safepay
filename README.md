@@ -1,4 +1,4 @@
-# 🌥️ Bulut Backend
+ 🌥️ Bulut Backend
 
 **AI-powered payment processing backend for the Bulut payment platform**
 
@@ -9,18 +9,25 @@ Built with FastAPI, optimized for Cloudflare Workers, featuring natural language
 ## 🚀 Quick Start
 
 ```bash
-# Clone the repository
-git clone https://github.com/your-org/bulut-backend.git
-cd bulut-backend
+# Install dependencies
+pip install fastapi uvicorn pydantic httpx web3 openai
 
-# Run complete setup
-make setup
+# Set up environment variables
+export AIMLAPI_KEY="your_api_key_from_aimlapi.com"
+export ARC_RPC_URL="https://mainnet.arc.network"
+export GAS_PAYER_KEY="your_private_key_here"
 
-# Start development server
-make dev
+# Run the server
+python main.py
 ```
 
 Visit **http://localhost:8000/docs** for interactive API documentation.
+
+**That's it!** The backend is now running with:
+- ✅ AI-powered natural language processing (GPT-4o)
+- ✅ Real blockchain transactions (Arc Protocol)
+- ✅ Web3 signature verification
+- ✅ Demo aliases pre-loaded (@alice, @bob, @charlie, @demo)
 
 ---
 
@@ -34,30 +41,28 @@ Visit **http://localhost:8000/docs** for interactive API documentation.
 - [Testing](#-testing)
 - [Deployment](#-deployment)
 - [API Documentation](#-api-documentation)
-- [Contributing](#-contributing)
 
 ---
 
 ## ✨ Features
 
 ### Core Capabilities
-- 🧠 **AI-Powered NLP**: Natural language payment processing using Claude Sonnet 4
-- ⚡ **Edge Computing**: Optimized for Cloudflare Workers (<50ms global latency)
-- 🔗 **Blockchain Integration**: Arc Protocol smart contract integration
+- 🧠 **AI-Powered NLP**: Natural language payment processing using AI/ML API (GPT-4o)
+- 🔗 **Arc Blockchain**: Real on-chain transactions via Web3.py
 - 👥 **Alias System**: Human-readable @username → wallet address mapping
+- 🔒 **Cryptographic Security**: Web3 signature verification for all operations
 - 💳 **Multiple Payment Types**: Single, recurring subscriptions, and split payments
-- 📊 **Transaction History**: Complete audit trail with real-time updates
-- 🎤 **Voice Confirmations**: Optional ElevenLabs voice synthesis
-- 🔒 **Enterprise Security**: Rate limiting, signature verification, input validation
+- 📊 **Transaction History**: Complete audit trail with blockchain explorer links
+- ⚡ **Fast Performance**: In-memory caching, async/await throughout
 
 ### Technical Features
 - Async/await throughout for maximum performance
-- SQLAlchemy ORM with async PostgreSQL/SQLite support
+- Web3.py integration for blockchain interactions
 - Comprehensive test suite (pytest)
 - Docker containerization
 - OpenAPI/Swagger documentation
 - Production-ready error handling
-- Structured logging
+- Mock AI parser fallback (works without API key)
 
 ---
 
@@ -78,21 +83,22 @@ Visit **http://localhost:8000/docs** for interactive API documentation.
 │  │  • Alias Service                 │   │
 │  │  • Payment Processor             │   │
 │  │  • Transaction Manager           │   │
-│  │  • Rate Limiter                  │   │
+│  │  • Web3 Integration              │   │
 │  └─────────────────────────────────┘   │
 └──────┬──────────────────┬───────────────┘
        │                  │
        ▼                  ▼
 ┌─────────────┐    ┌─────────────┐
-│  AI Agent   │    │ Arc Chain   │
-│  (Claude)   │    │  (Smart     │
-│             │    │  Contracts) │
+│  AI/ML API  │    │ Arc Chain   │
+│  (GPT-4o)   │    │  (Web3.py)  │
+│             │    │             │
 └─────────────┘    └─────────────┘
        │
        ▼
 ┌─────────────┐
 │  Database   │
-│ (PostgreSQL)│
+│ (In-Memory/ │
+│  SQLite)    │
 └─────────────┘
 ```
 
@@ -103,8 +109,8 @@ Visit **http://localhost:8000/docs** for interactive API documentation.
 ### Prerequisites
 
 - **Python 3.10+**
-- **PostgreSQL 14+** (or SQLite for development)
-- **Redis** (optional, for rate limiting)
+- **AI/ML API Key** (from aimlapi.com)
+- **Arc Network Access** (RPC URL and gas payer private key)
 - **Docker** (optional, for containerization)
 
 ### Method 1: Standard Installation
@@ -115,30 +121,30 @@ python -m venv venv
 source venv/bin/activate  # On Windows: venv\Scripts\activate
 
 # Install dependencies
-make install
+pip install -r requirements.txt
 
 # Set up environment variables
-make env
-# Edit .env with your API keys
-
-# Initialize database
-make db-init
+cp .env.example .env
+# Edit .env with your API keys:
+# - AIMLAPI_KEY=your_key_here
+# - ARC_RPC_URL=https://mainnet.arc.network
+# - GAS_PAYER_KEY=your_private_key
 
 # Run the server
-make dev
+python main.py
 ```
 
 ### Method 2: Docker Installation
 
 ```bash
-# Build and start all services
-make docker-up
+# Build and start
+docker-compose up --build
 
 # View logs
-make docker-logs
+docker-compose logs -f
 
 # Stop services
-make docker-down
+docker-compose down
 ```
 
 ---
@@ -150,29 +156,46 @@ make docker-down
 Copy `.env.example` to `.env` and configure:
 
 ```bash
-# Required
-ANTHROPIC_API_KEY=sk-ant-api03-...
-ARC_RPC_URL=https://mainnet.arc.network
-ARC_CONTRACT_ADDRESS=0x...
+# Required - AI Processing
+AIMLAPI_KEY=your_api_key_here
 
-# Optional
-ELEVENLABS_API_KEY=...
-DATABASE_URL=postgresql+asyncpg://user:pass@localhost/bulut
+# Required - Blockchain
+ARC_RPC_URL=https://mainnet.arc.network
+ARC_CHAIN_ID=4224
+GAS_PAYER_KEY=your_private_key_here
+
+# Optional - Smart Contracts
+ARC_USDC_ADDRESS=0xA0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48
+ARC_EXPLORER_URL=https://explorer.arc.network
+
+# Optional - Server Configuration
+HOST=0.0.0.0
+PORT=8000
+APP_ENV=development
+DEBUG=true
+LOG_LEVEL=INFO
+
+# Optional - Storage
+DATABASE_URL=sqlite:///./bulut.db
+
+# Optional - Security
 JWT_SECRET=your-secret-key
-ALLOWED_ORIGINS=http://localhost:3000,https://bulut.app
+ALLOWED_ORIGINS=*
 ```
 
 ### Configuration Options
 
 | Variable | Required | Default | Description |
 |----------|----------|---------|-------------|
-| `ANTHROPIC_API_KEY` | Yes | - | Claude API key for NLP processing |
+| `AIMLAPI_KEY` | Yes | - | AI/ML API key for NLP processing (GPT-4o) |
 | `ARC_RPC_URL` | Yes | - | Arc blockchain RPC endpoint |
-| `ARC_CONTRACT_ADDRESS` | Yes | - | Bulut smart contract address |
+| `GAS_PAYER_KEY` | Yes | - | Private key for gas payment on transactions |
+| `ARC_CHAIN_ID` | No | `4224` | Arc network chain ID |
+| `ARC_USDC_ADDRESS` | No | `0xA0b...` | USDC contract address on Arc |
+| `ARC_EXPLORER_URL` | No | `https://...` | Blockchain explorer base URL |
 | `DATABASE_URL` | No | `sqlite:///bulut.db` | Database connection string |
-| `ELEVENLABS_API_KEY` | No | - | Voice synthesis API key |
 | `JWT_SECRET` | No | (generated) | Secret for JWT signing |
-| `RATE_LIMIT_ENABLED` | No | `true` | Enable rate limiting |
+| `RATE_LIMIT_ENABLED` | No | `false` | Enable rate limiting |
 | `LOG_LEVEL` | No | `INFO` | Logging level |
 
 ---
@@ -183,41 +206,32 @@ ALLOWED_ORIGINS=http://localhost:3000,https://bulut.app
 
 ```bash
 # Start development server with auto-reload
-make dev
+python main.py
 
-# With debug logging
-make dev-debug
+# Or with uvicorn directly
+uvicorn main:app --reload --host 0.0.0.0 --port 8000
 
 # Run tests
-make test
+pytest test-backend.py -v
 
-# Run tests with coverage
-make test-cov
-
-# Format code
-make format
-
-# Run linters
-make lint
-
-# Run all checks
-make check
+# Run interactive test client
+python test-client.py
 ```
 
 ### Project Structure
 
 ```
 bulut-backend/
-├── main.py                 # FastAPI application
-├── database.py             # Database models & setup
-├── test_backend.py         # Test suite
+├── main.py                 # FastAPI application (core API)
+├── agent.py                # AI payment parsing (Real + Mock)
+├── blockchain_service.py   # Web3 blockchain integration
+├── test-backend.py         # Comprehensive test suite
+├── test-client.py          # Interactive test client
 ├── requirements.txt        # Python dependencies
-├── Dockerfile             # Docker configuration
-├── docker-compose.yml     # Docker services
-├── Makefile               # Development commands
-├── .env.example           # Environment template
-├── wrangler.toml          # Cloudflare Workers config
-└── README.md              # This file
+├── .env.example            # Environment template
+├── docker-compose.yml      # Docker services
+├── Dockerfile              # Docker configuration
+└── README.md               # This file
 ```
 
 ### API Development
@@ -229,7 +243,7 @@ async def your_endpoint(data: YourModel):
     # Your logic here
     return {"success": True}
 
-# Add tests in test_backend.py
+# Add tests in test-backend.py
 def test_your_endpoint(client):
     response = client.post("/your-endpoint", json={...})
     assert response.status_code == 200
@@ -243,65 +257,36 @@ def test_your_endpoint(client):
 
 ```bash
 # Run all tests
-make test
-
-# Run with coverage report
-make test-cov
-
-# Run specific test file
-pytest test_backend.py -v
+pytest test-backend.py -v
 
 # Run specific test
-pytest test_backend.py::test_register_alias_success -v
+pytest test-backend.py::test_register_alias_success -v
 
-# Run tests in watch mode
-make test-watch
+# Run with coverage
+pytest test-backend.py --cov=. --cov-report=html
+
+# Run interactive test client
+python test-client.py --auto  # Automated
+python test-client.py         # Interactive mode
 ```
 
 ### Test Coverage
 
 Current test coverage: **85%+**
 
-```bash
-# Generate coverage report
-make test-cov
-
-# View HTML report
-open htmlcov/index.html
-```
-
-### Writing Tests
-
-```python
-# Example test
-def test_new_feature(client):
-    """Test description"""
-    response = client.post("/endpoint", json={"data": "value"})
-    assert response.status_code == 200
-    assert response.json()["success"] == True
-```
+Tests include:
+- ✅ Alias registration with signature verification
+- ✅ Alias resolution and reverse lookup
+- ✅ Payment command processing (AI + Mock)
+- ✅ Payment execution (single, split, subscription)
+- ✅ Transaction history and retrieval
+- ✅ Error handling and edge cases
+- ✅ Security (SQL injection, XSS prevention)
+- ✅ Blockchain integration
 
 ---
 
 ## 🚀 Deployment
-
-### Cloudflare Workers (Recommended)
-
-```bash
-# Install Wrangler CLI
-npm install -g wrangler
-
-# Login to Cloudflare
-wrangler login
-
-# Configure wrangler.toml with your account details
-
-# Deploy to production
-make deploy-cloudflare
-
-# Deploy to staging
-make deploy-staging
-```
 
 ### Docker Deployment
 
@@ -317,7 +302,7 @@ docker run -d \
   bulut-backend:latest
 
 # With Docker Compose
-docker-compose -f docker-compose.prod.yml up -d
+docker-compose up -d
 ```
 
 ### Traditional Server Deployment
@@ -327,15 +312,26 @@ docker-compose -f docker-compose.prod.yml up -d
 pip install -r requirements.txt
 
 # Set environment variables
-export ANTHROPIC_API_KEY=...
+export AIMLAPI_KEY=...
 export ARC_RPC_URL=...
+export GAS_PAYER_KEY=...
 
 # Run with Gunicorn
+pip install gunicorn
 gunicorn main:app -w 4 -k uvicorn.workers.UvicornWorker \
-  --bind 0.0.0.0:8000 \
-  --access-logfile - \
-  --error-logfile -
+  --bind 0.0.0.0:8000
 ```
+
+### Production Checklist
+
+- [ ] Set `AIMLAPI_KEY` for production AI processing
+- [ ] Configure `GAS_PAYER_KEY` with funded account
+- [ ] Set secure `JWT_SECRET`
+- [ ] Configure `ALLOWED_ORIGINS` properly
+- [ ] Enable HTTPS/TLS
+- [ ] Set up monitoring (Sentry)
+- [ ] Configure database backups
+- [ ] Enable rate limiting (set `RATE_LIMIT_ENABLED=true`)
 
 ---
 
@@ -354,19 +350,7 @@ gunicorn main:app -w 4 -k uvicorn.workers.UvicornWorker \
 GET /health
 ```
 
-#### Process Command
-```bash
-POST /process_command
-Content-Type: application/json
-
-{
-  "text": "Send $50 to @alice",
-  "user_id": "user_123",
-  "timezone": "UTC"
-}
-```
-
-#### Register Alias
+#### Register Alias (with Web3 Signature)
 ```bash
 POST /alias/register
 Content-Type: application/json
@@ -378,7 +362,19 @@ Content-Type: application/json
 }
 ```
 
-#### Execute Payment
+#### Process Command (AI/ML API)
+```bash
+POST /process_command
+Content-Type: application/json
+
+{
+  "text": "Send $50 to @alice",
+  "user_id": "user_123",
+  "timezone": "UTC"
+}
+```
+
+#### Execute Payment (Web3 Transaction)
 ```bash
 POST /execute_payment
 Content-Type: application/json
@@ -393,75 +389,37 @@ X-Signature: 0x...
 }
 ```
 
-#### Get Transaction History
-```bash
-GET /history/{address}?limit=50&offset=0
-```
-
 See [API_CONTRACTS.md](API_CONTRACTS.md) for complete documentation.
 
 ---
 
 ## 🔒 Security
 
-### Best Practices Implemented
+### Implemented Security Features
 
+✅ **Web3 Signature Verification**: All alias registrations verified cryptographically  
 ✅ **Input Validation**: Pydantic models for all inputs  
 ✅ **SQL Injection Protection**: Parameterized queries  
 ✅ **XSS Prevention**: Sanitized outputs  
-✅ **Rate Limiting**: Configurable limits per endpoint  
-✅ **Signature Verification**: Cryptographic validation  
 ✅ **CORS Configuration**: Whitelist-based origins  
 ✅ **HTTPS Only**: Enforced in production  
-✅ **Secrets Management**: Environment-based configuration  
+✅ **Rate Limiting**: Configurable limits per endpoint  
 
-### Security Checklist
+### Signature Verification
 
-Before deploying to production:
+```python
+from eth_account import Account
+from eth_account.messages import encode_defunct
 
-- [ ] Change default `JWT_SECRET`
-- [ ] Configure `ALLOWED_ORIGINS` properly
-- [ ] Enable HTTPS/TLS
-- [ ] Set up rate limiting backend (Redis)
-- [ ] Configure Sentry for error monitoring
-- [ ] Review and update firewall rules
-- [ ] Enable database backups
-- [ ] Set up log aggregation
+# Create message
+message = f"Estoy registrando el alias {alias} para la dirección {address}"
+message_hash = encode_defunct(text=message)
 
----
+# Verify signature
+recovered_address = Account.recover_message(message_hash, signature=signature)
 
-## 📊 Monitoring & Logging
-
-### Health Monitoring
-
-```bash
-# Check application health
-make health-check
-
-# View logs
-make logs
-
-# Docker logs
-make docker-logs
-```
-
-### Sentry Integration
-
-```bash
-# Set Sentry DSN in .env
-SENTRY_DSN=https://...@sentry.io/...
-
-# Errors will be automatically reported
-```
-
-### Performance Monitoring
-
-```bash
-# Run benchmark
-make benchmark
-
-# Run load test
-make load-test
+if recovered_address.lower() != address.lower():
+    raise ValueError("Invalid signature")
 ```
 
 ---
@@ -470,27 +428,20 @@ make load-test
 
 ### Common Issues
 
-**Issue**: `ModuleNotFoundError: No module named 'main'`  
-**Solution**: Make sure you're in the project directory and virtual environment is activated.
+**Issue**: `ModuleNotFoundError: No module named 'web3'`  
+**Solution**: Install dependencies: `pip install -r requirements.txt`
 
-**Issue**: `Database connection failed`  
-**Solution**: Check `DATABASE_URL` in `.env` and ensure PostgreSQL is running.
+**Issue**: `AIMLAPI_KEY not found`  
+**Solution**: Create `.env` file and add `AIMLAPI_KEY=your_key_here`
 
-**Issue**: `AI agent timeout`  
-**Solution**: Verify `ANTHROPIC_API_KEY` is valid and AI agent service is running.
+**Issue**: `Web3 not connected to network`  
+**Solution**: Check `ARC_RPC_URL` in `.env` and network connectivity
 
-**Issue**: `Rate limit exceeded`  
-**Solution**: Check Redis connection or disable rate limiting in development.
+**Issue**: `GAS_PAYER_KEY not set. Real transactions will fail`  
+**Solution**: Add funded private key to `.env` as `GAS_PAYER_KEY`
 
-### Debug Mode
-
-```bash
-# Run with debug logging
-LOG_LEVEL=DEBUG make dev
-
-# Check configuration
-python -c "from main import config; print(vars(config))"
-```
+**Issue**: AI agent returns low confidence  
+**Solution**: Make command more specific or check if AIMLAPI_KEY is valid
 
 ---
 
@@ -501,19 +452,10 @@ We welcome contributions! Please follow these steps:
 1. Fork the repository
 2. Create a feature branch (`git checkout -b feature/amazing-feature`)
 3. Make your changes
-4. Run tests (`make test`)
-5. Format code (`make format`)
-6. Commit changes (`git commit -m 'Add amazing feature'`)
-7. Push to branch (`git push origin feature/amazing-feature`)
-8. Open a Pull Request
-
-### Development Guidelines
-
-- Write tests for new features
-- Follow PEP 8 style guide (enforced by `black` and `flake8`)
-- Update documentation
-- Add type hints
-- Keep functions focused and small
+4. Run tests (`pytest test-backend.py`)
+5. Commit changes (`git commit -m 'Add amazing feature'`)
+6. Push to branch (`git push origin feature/amazing-feature`)
+7. Open a Pull Request
 
 ---
 
@@ -527,8 +469,8 @@ This project is proprietary and confidential.
 
 **Backend Team**
 - Lead Backend Engineer
+- Blockchain Integration Specialist
 - DevOps Engineer
-- Database Administrator
 
 **AI Team**
 - AI/ML Engineer
@@ -542,28 +484,60 @@ This project is proprietary and confidential.
 - **API Status**: https://status.bulut.app
 - **Email**: dev@bulut.app
 - **Discord**: https://discord.gg/bulut
+- **GitHub**: https://github.com/bulut-app
 
 ---
 
 ## 🙏 Acknowledgments
 
-- **Anthropic** for Claude AI API
+- **AI/ML API** for GPT-4o access
 - **Arc Protocol** for blockchain infrastructure
+- **Web3.py** for Ethereum-compatible interactions
 - **FastAPI** for the amazing framework
-- **Cloudflare** for edge computing platform
+- **OpenAI** for GPT-4o model
+
+---
+
+## 📈 Technology Stack
+
+### Backend Framework
+- **FastAPI** - Modern async Python web framework
+- **Uvicorn** - Lightning-fast ASGI server
+- **Pydantic** - Data validation and serialization
+
+### AI/NLP
+- **AI/ML API** - GPT-4o model access
+- **Pattern matching** - Fallback mock parser
+
+### Blockchain
+- **Web3.py** - Ethereum/Arc blockchain interactions
+- **eth-account** - Signature creation and verification
+- **Arc Protocol** - Layer 2 blockchain (Chain ID: 4224)
+
+### Storage
+- **In-memory** - Development and demo
+- **SQLite** - Local persistence
+- **PostgreSQL** - Production (via SQLAlchemy)
+
+### Additional
+- **HTTPX** - Async HTTP client
+- **pytest** - Testing framework
+- **Docker** - Containerization
 
 ---
 
 ## 📈 Roadmap
 
-- [x] Core payment processing
-- [x] Alias system
+- [x] Core payment processing with AI
+- [x] Alias system with Web3 signatures
+- [x] Real blockchain transactions
 - [x] Transaction history
 - [ ] WebSocket support for real-time updates
-- [ ] Multi-currency support
+- [ ] Smart contract for subscriptions
+- [ ] Smart contract for split payments
+- [ ] Multi-currency support (ETH, BTC, USDC)
 - [ ] Advanced analytics dashboard
 - [ ] Mobile SDK
-- [ ] Recurring payment optimization
 - [ ] Multi-signature wallet support
 
 ---
