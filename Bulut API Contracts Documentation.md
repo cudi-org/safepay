@@ -2,7 +2,7 @@
 
 **Version:** 1.0.0  
 **Base URL:** `https://api.bulut.app/v1`  
-**Last Updated:** October 31, 2025
+**Last Updated:** November 09, 2025
 
 ---
 
@@ -30,7 +30,13 @@ X-Signature: {SIGNED_PAYLOAD}
 
 **Signature Format:**
 ```javascript
-signature = sign(sha256(payload + timestamp + wallet_address), private_key)
+// Using Web3.py
+from eth_account.messages import encode_defunct
+from eth_account import Account
+
+message = f"Register alias {alias} for address {address}"
+message_hash = encode_defunct(text=message)
+signature = Account.sign_message(message_hash, private_key=private_key)
 ```
 
 ---
@@ -47,11 +53,16 @@ GET /health
 ```json
 {
   "status": "healthy",
-  "timestamp": "2025-10-31T12:00:00Z",
+  "timestamp": "2025-11-09T12:00:00Z",
+  "version": "v1",
+  "environment": "production",
   "services": {
     "api": "operational",
-    "database": "operational",
-    "blockchain": "operational"
+    "blockchain": "ok"
+  },
+  "stats": {
+    "aliases": 1542,
+    "transactions": 8934
   }
 }
 ```
@@ -62,7 +73,7 @@ GET /health
 
 ### Register Alias
 
-Register a new `@username` → wallet address mapping.
+Register a new `@username` → wallet address mapping with cryptographic signature verification.
 
 ```http
 POST /alias/register
@@ -78,12 +89,17 @@ Content-Type: application/json
 }
 ```
 
+**Signature Requirements:**
+- Message format: `"Estoy registrando el alias {alias} para la dirección {address}"`
+- Must be signed with the private key corresponding to the address
+- Signature verification using Web3 `Account.recover_message()`
+
 **Response (201 Created):**
 ```json
 {
   "success": true,
   "alias": "@alice",
-  "address": "0x742d35Cc6634C0532925a3b844Bc9e7595f0bEb",
+  "address": "0x742d35cc6634c0532925a3b844bc9e7595f0beb",
   "message": "Alias registered successfully"
 }
 ```
@@ -91,7 +107,8 @@ Content-Type: application/json
 **Error Responses:**
 - `409 Conflict` - Alias already registered
 - `400 Bad Request` - Invalid alias format
-- `401 Unauthorized` - Invalid signature
+- `403 Forbidden` - Invalid signature (signature doesn't match address)
+- `422 Unprocessable Entity` - Invalid request format
 
 ---
 
@@ -110,7 +127,7 @@ GET /alias/@alice
 ```json
 {
   "alias": "@alice",
-  "address": "0x742d35Cc6634C0532925a3b844Bc9e7595f0bEb"
+  "address": "0x742d35cc6634c0532925a3b844bc9e7595f0beb"
 }
 ```
 
@@ -128,7 +145,7 @@ GET /address/{address}/alias
 **Response (200 OK):**
 ```json
 {
-  "address": "0x742d35Cc6634C0532925a3b844Bc9e7595f0bEb",
+  "address": "0x742d35cc6634c0532925a3b844bc9e7595f0beb",
   "alias": "@alice"
 }
 ```
@@ -136,9 +153,35 @@ GET /address/{address}/alias
 If no alias registered, returns:
 ```json
 {
-  "address": "0x742d35Cc6634C0532925a3b844Bc9e7595f0bEb",
+  "address": "0x742d35cc6634c0532925a3b844bc9e7595f0beb",
   "alias": null
 }
+```
+
+---
+
+### Search Aliases
+
+```http
+GET /alias/search?query={search_term}&limit={limit}
+```
+
+**Query Parameters:**
+- `query` (required): Search term (minimum 2 characters)
+- `limit` (optional): Maximum results (default: 10, max: 50)
+
+**Response (200 OK):**
+```json
+[
+  {
+    "alias": "@alice",
+    "address": "0x742d35cc6634c0532925a3b844bc9e7595f0beb"
+  },
+  {
+    "alias": "@alice_smith",
+    "address": "0x8626f6940e2eb28930efb4cef49b2d1f2c9c1199"
+  }
+]
 ```
 
 ---
@@ -147,7 +190,7 @@ If no alias registered, returns:
 
 ### Process Natural Language Command
 
-Convert human language to structured payment intent.
+Convert human language to structured payment intent using AI/ML API (GPT-4o).
 
 ```http
 POST /process_command
@@ -181,8 +224,31 @@ Content-Type: application/json
   "confirmation_text": "Send $50 to @alice for lunch payment?",
   "_metadata": {
     "raw_input": "Send $50 to @alice for lunch",
-    "parsed_at": "2025-10-31T12:00:00Z",
-    "model_version": "claude-sonnet-4-20250514"
+    "parsed_at": "2025-11-09T12:00:00Z",
+    "model": "gpt-4o",
+    "parser": "real"
+  }
+}
+```
+
+**Mock Mode Response (No AI API Key):**
+```json
+{
+  "payment_type": "single",
+  "intent": {
+    "action": "send",
+    "amount": 50,
+    "currency": "USD",
+    "recipient": {
+      "alias": "@alice"
+    },
+    "memo": "Mocked payment"
+  },
+  "confidence": 0.85,
+  "requires_confirmation": true,
+  "confirmation_text": "Send USD 50 to @alice?",
+  "_metadata": {
+    "parser": "mock"
   }
 }
 ```
@@ -190,33 +256,35 @@ Content-Type: application/json
 **Error Response (400 Bad Request):**
 ```json
 {
+  "payment_type": null,
+  "intent": {},
+  "confidence": 0.0,
+  "requires_confirmation": false,
   "error": {
-    "code": "ambiguous_intent",
+    "code": "missing_amount",
     "message": "Could not determine payment amount",
     "suggestions": [
       "Try specifying an amount like '$50'",
       "Use format: 'send [amount] to [recipient]'"
     ]
-  },
-  "confidence": 0.3
+  }
 }
 ```
 
 **Status Codes:**
 - `200 OK` - Successfully parsed (confidence ≥ 0.5)
 - `400 Bad Request` - Low confidence or parsing error
-- `422 Unprocessable Entity` - Invalid input format
+- `503 Service Unavailable` - AI agent not configured
 
 ---
 
 ### Execute Payment
 
-Execute a confirmed payment intent on the blockchain.
+Execute a confirmed payment intent on the Arc blockchain.
 
 ```http
 POST /execute_payment
 Content-Type: application/json
-Authorization: Bearer {JWT_TOKEN}
 X-Wallet-Address: {USER_ADDRESS}
 X-Signature: {SIGNATURE}
 ```
@@ -230,10 +298,10 @@ X-Signature: {SIGNATURE}
     "intent": {
       "action": "send",
       "amount": 50,
-      "currency": "USD",
+      "currency": "ARC",
       "recipient": {
         "alias": "@alice",
-        "address": "0x742d35Cc6634C0532925a3b844Bc9e7595f0bEb"
+        "address": "0x742d35cc6634c0532925a3b844bc9e7595f0beb"
       },
       "memo": "Lunch payment"
     },
@@ -245,33 +313,37 @@ X-Signature: {SIGNATURE}
 }
 ```
 
-**Response (200 OK):**
+**Response (200 OK - Success):**
 ```json
 {
   "success": true,
   "transaction_hash": "0xabc123def456...",
   "blockchain": "arc",
-  "timestamp": "2025-10-31T12:00:05Z",
+  "timestamp": "2025-11-09T12:00:05Z",
+  "amount": 50.0,
+  "from_address": "0x123abc...",
+  "to_address": "0x742d35cc6634c0532925a3b844bc9e7595f0beb",
+  "explorer_url": "https://explorer.arc.network/tx/0xabc123def456...",
   "error": null
 }
 ```
 
-**Response (500 Internal Server Error):**
+**Response (200 OK - Failure):**
 ```json
 {
   "success": false,
   "transaction_hash": null,
   "blockchain": "arc",
-  "timestamp": "2025-10-31T12:00:05Z",
+  "timestamp": "2025-11-09T12:00:05Z",
   "error": "Insufficient funds"
 }
 ```
 
 **Status Codes:**
-- `200 OK` - Transaction executed (check `success` field)
+- `200 OK` - Transaction processed (check `success` field)
 - `404 Not Found` - Recipient alias not found
-- `401 Unauthorized` - Invalid signature
-- `400 Bad Request` - Invalid payment intent
+- `403 Forbidden` - Header address doesn't match request body
+- `503 Service Unavailable` - Blockchain service not initialized
 
 ---
 
@@ -290,7 +362,7 @@ POST /execute_payment
     "intent": {
       "action": "send",
       "amount": 9.99,
-      "currency": "USD",
+      "currency": "ARC",
       "recipient": {
         "alias": "@netflix"
       },
@@ -308,7 +380,9 @@ POST /execute_payment
 }
 ```
 
-**Response:** Same format as single payment
+**Response:** Same format as single payment, includes `subscription_id`
+
+**Note:** Subscription execution is currently simulated (not on-chain smart contract).
 
 ---
 
@@ -327,7 +401,7 @@ POST /execute_payment
     "intent": {
       "action": "split",
       "amount": 120,
-      "currency": "USD",
+      "currency": "ARC",
       "recipients": [
         {
           "alias": "@bob",
@@ -350,6 +424,8 @@ POST /execute_payment
 }
 ```
 
+**Note:** Split payment execution is currently simulated (not on-chain smart contract).
+
 ---
 
 ## Transaction History
@@ -357,7 +433,7 @@ POST /execute_payment
 ### Get User Transaction History
 
 ```http
-GET /history/{address}?limit=50
+GET /history/{address}?limit=50&offset=0
 ```
 
 **Example:**
@@ -368,30 +444,21 @@ GET /history/0x742d35Cc6634C0532925a3b844Bc9e7595f0bEb?limit=20
 **Response (200 OK):**
 ```json
 {
-  "address": "0x742d35Cc6634C0532925a3b844Bc9e7595f0bEb",
+  "address": "0x742d35cc6634c0532925a3b844bc9e7595f0beb",
+  "total_count": 45,
   "count": 15,
   "transactions": [
     {
       "id": "tx_abc123",
-      "timestamp": "2025-10-31T11:45:00Z",
-      "from": "0x742d35Cc6634C0532925a3b844Bc9e7595f0bEb",
-      "to": "0x123abc...",
+      "timestamp": "2025-11-09T11:45:00Z",
+      "from_address": "0x742d35cc6634c0532925a3b844bc9e7595f0beb",
+      "to_address": "0x123abc...",
       "amount": 50,
+      "currency": "ARC",
       "type": "single",
-      "tx_hash": "0xabc123def456...",
+      "transaction_hash": "0xabc123def456...",
       "status": "success",
       "memo": "Lunch payment"
-    },
-    {
-      "id": "tx_def456",
-      "timestamp": "2025-10-30T15:30:00Z",
-      "from": "0x456def...",
-      "to": "0x742d35Cc6634C0532925a3b844Bc9e7595f0bEb",
-      "amount": 200,
-      "type": "single",
-      "tx_hash": "0xdef456...",
-      "status": "success",
-      "memo": "Freelance work"
     }
   ]
 }
@@ -399,6 +466,7 @@ GET /history/0x742d35Cc6634C0532925a3b844Bc9e7595f0bEb?limit=20
 
 **Query Parameters:**
 - `limit` (optional): Maximum number of transactions (default: 50, max: 100)
+- `offset` (optional): Pagination offset (default: 0)
 
 ---
 
@@ -407,15 +475,19 @@ GET /history/0x742d35Cc6634C0532925a3b844Bc9e7595f0bEb?limit=20
 | Code | HTTP Status | Description |
 |------|-------------|-------------|
 | `alias_exists` | 409 | Alias already registered |
+| `address_has_alias` | 409 | Address already has an alias |
 | `alias_not_found` | 404 | Alias does not exist |
-| `invalid_alias_format` | 400 | Alias format invalid (must be @username) |
-| `invalid_signature` | 401 | Cryptographic signature verification failed |
+| `invalid_alias_format` | 422 | Alias format invalid (must be @username, 3-20 chars) |
+| `invalid_signature` | 403 | Cryptographic signature verification failed |
+| `signature_error` | 400 | Error processing signature |
+| `recipient_not_found` | 404 | Payment recipient alias not found |
 | `insufficient_funds` | 400 | User wallet has insufficient balance |
-| `ambiguous_intent` | 400 | AI could not parse payment intent clearly |
 | `missing_amount` | 400 | Payment amount not specified |
 | `missing_recipient` | 400 | Payment recipient not specified |
+| `ambiguous_intent` | 400 | AI could not parse payment intent clearly |
+| `unexpected_error` | 500 | Unexpected error occurred |
 | `blockchain_error` | 500 | Blockchain RPC error |
-| `rate_limit_exceeded` | 429 | Too many requests |
+| `service_unavailable` | 503 | Required service not initialized |
 
 **Standard Error Response:**
 ```json
@@ -426,16 +498,18 @@ GET /history/0x742d35Cc6634C0532925a3b844Bc9e7595f0bEb?limit=20
     "details": {
       "required": 50,
       "available": 25,
-      "currency": "USD"
+      "currency": "ARC"
     }
   },
-  "timestamp": "2025-10-31T12:00:00Z"
+  "timestamp": "2025-11-09T12:00:00Z"
 }
 ```
 
 ---
 
 ## Rate Limits
+
+Rate limiting is configurable via `RATE_LIMIT_ENABLED` environment variable.
 
 | Endpoint | Rate Limit | Window |
 |----------|------------|--------|
@@ -449,7 +523,7 @@ GET /history/0x742d35Cc6634C0532925a3b844Bc9e7595f0bEb?limit=20
 ```http
 X-RateLimit-Limit: 100
 X-RateLimit-Remaining: 95
-X-RateLimit-Reset: 1698757200
+X-RateLimit-Reset: 1699545600
 ```
 
 **Rate Limit Exceeded Response (429):**
@@ -465,57 +539,121 @@ X-RateLimit-Reset: 1698757200
 
 ---
 
-## WebSocket Support (Future)
+## Technology Stack
 
-**Coming Soon:** Real-time payment notifications
+### AI/NLP Processing
+- **AI/ML API** with GPT-4o model
+- Fallback to pattern-matching mock parser when API key not configured
+- Structured JSON output with confidence scoring
 
-```javascript
-// Future WebSocket endpoint
-ws://api.bulut.app/ws/payments?address={USER_ADDRESS}
+### Blockchain
+- **Arc Protocol** blockchain (Chain ID: 4224)
+- **Web3.py** for blockchain interactions
+- **eth-account** for signature verification
+- Native ARC token transactions (real on-chain)
+- USDC contract address: `0xA0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48`
 
-// Event types:
-{
-  "event": "payment_received",
-  "data": { ... }
-}
-```
+### Backend
+- **FastAPI** - Modern async Python web framework
+- **Pydantic** - Data validation and serialization
+- **Uvicorn** - ASGI server
+- **HTTPX** - Async HTTP client
+
+### Storage
+- In-memory storage for development
+- PostgreSQL/SQLite support via SQLAlchemy (production-ready)
+- Redis support for rate limiting
 
 ---
 
 ## SDK Examples
 
-### JavaScript/TypeScript
-```typescript
-import { BulutClient } from '@bulut/sdk';
-
-const client = new BulutClient({
-  apiKey: process.env.BULUT_API_KEY,
-  network: 'mainnet'
-});
-
-// Process command
-const intent = await client.processCommand('Send $50 to @alice');
-
-// Execute payment
-const tx = await client.executePayment(intent, {
-  signature: userSignature
-});
-```
-
 ### Python
 ```python
-from bulut_sdk import BulutClient
+from web3 import Web3
+from eth_account import Account
+from eth_account.messages import encode_defunct
+import requests
 
-client = BulutClient(
-    api_key=os.environ['BULUT_API_KEY'],
-    network='mainnet'
-)
+# Initialize
+API_URL = "https://api.bulut.app/v1"
+w3 = Web3(Web3.HTTPProvider("https://mainnet.arc.network"))
 
-# Process command
-intent = client.process_command('Send $50 to @alice')
+# Register alias with signature
+def register_alias(alias: str, address: str, private_key: str):
+    message = f"Estoy registrando el alias {alias} para la dirección {address}"
+    message_hash = encode_defunct(text=message)
+    signed = Account.sign_message(message_hash, private_key=private_key)
+    
+    response = requests.post(f"{API_URL}/alias/register", json={
+        "alias": alias,
+        "address": address,
+        "signature": signed.signature.hex()
+    })
+    return response.json()
+
+# Process payment command
+def process_command(text: str):
+    response = requests.post(f"{API_URL}/process_command", json={
+        "text": text,
+        "user_id": "user_123",
+        "timezone": "UTC"
+    })
+    return response.json()
 
 # Execute payment
-tx = client.execute_payment(intent, signature=user_signature)
+def execute_payment(intent, user_address: str, private_key: str):
+    # Sign payment
+    message = f"Execute payment: {intent['intent_id']}"
+    message_hash = encode_defunct(text=message)
+    signed = Account.sign_message(message_hash, private_key=private_key)
+    
+    response = requests.post(
+        f"{API_URL}/execute_payment",
+        json={
+            "intent_id": intent["intent_id"],
+            "payment_intent": intent,
+            "user_signature": signed.signature.hex(),
+            "user_address": user_address
+        },
+        headers={
+            "X-Wallet-Address": user_address,
+            "X-Signature": signed.signature.hex()
+        }
+    )
+    return response.json()
+```
+
+### JavaScript/TypeScript
+```typescript
+import { ethers } from 'ethers';
+
+const API_URL = 'https://api.bulut.app/v1';
+
+// Register alias
+async function registerAlias(alias: string, address: string, signer: ethers.Signer) {
+  const message = `Estoy registrando el alias ${alias} para la dirección ${address}`;
+  const signature = await signer.signMessage(message);
+  
+  const response = await fetch(`${API_URL}/alias/register`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ alias, address, signature })
+  });
+  
+  return response.json();
+}
+
+// Process command
+async function processCommand(text: string) {
+  const response = await fetch(`${API_URL}/process_command`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ text, user_id: 'user_123', timezone: 'UTC' })
+  });
+  
+  return response.json();
+}
 ```
 
 ---
@@ -523,13 +661,20 @@ tx = client.execute_payment(intent, signature=user_signature)
 ## Testing
 
 **Sandbox Environment:**
-- Base URL: `https://api-sandbox.bulut.app/v1`
-- Test alias: `@testuser` → `0xTEST...`
+- Base URL: `http://localhost:8000`
+- Demo aliases: `@alice`, `@bob`, `@charlie`, `@demo`
 - No real funds required
 
-**Test API Key:**
-```
-BULUT_TEST_API_KEY=blt_test_abc123xyz789
+**Environment Variables:**
+```bash
+# Required
+AIMLAPI_KEY=your_api_key_here
+ARC_RPC_URL=https://mainnet.arc.network
+GAS_PAYER_KEY=your_private_key_here
+
+# Optional
+ARC_USDC_ADDRESS=0xA0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48
+ARC_CHAIN_ID=4224
 ```
 
 ---
@@ -540,3 +685,4 @@ BULUT_TEST_API_KEY=blt_test_abc123xyz789
 - **API Status:** https://status.bulut.app
 - **Discord:** https://discord.gg/bulut
 - **Email:** dev@bulut.app
+- **GitHub:** https://github.com/bulut-app
