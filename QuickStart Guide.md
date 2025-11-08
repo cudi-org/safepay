@@ -7,15 +7,16 @@ Get the fully functional AI-powered payment backend running in **2 minutes**!
 ## ⚡ Super Quick Start
 
 ```bash
-# 1. Clone or download the files
-# 2. Make start script executable
-chmod +x start.sh
+# 1. Install dependencies
+pip install fastapi uvicorn pydantic httpx web3 openai
 
-# 3. Run it!
-./start.sh
+# 2. Set environment variables
+export AIMLAPI_KEY="your_api_key_here"
+export ARC_RPC_URL="https://mainnet.arc.network"
+export GAS_PAYER_KEY="your_private_key_here"
 
-# 4. (Optional) Add your Anthropic API key to .env
-# Edit .env and add: ANTHROPIC_API_KEY=sk-ant-api03-...
+# 3. Run the server
+python main.py
 ```
 
 **Done!** Visit **http://localhost:8000/docs** 🎉
@@ -24,64 +25,68 @@ chmod +x start.sh
 
 ## 📦 What's Included
 
-✅ **main.py** - Complete FastAPI backend (620+ lines)  
-✅ **agent.py** - Bulut AI Agent with Claude Sonnet 4  
-✅ **test_client.py** - Interactive testing suite  
-✅ **start.sh** - One-command setup  
-✅ **.env.example** - Configuration template  
+✅ **main.py** - Complete FastAPI backend with Web3 integration  
+✅ **agent.py** - Bulut AI Agent with GPT-4o (+ Mock fallback)  
+✅ **blockchain_service.py** - Real Arc blockchain transactions  
+✅ **test-client.py** - Interactive testing suite  
 ✅ **requirements.txt** - All dependencies  
 
 ---
 
 ## 🧠 AI Agent Features
 
-### With Anthropic API Key (Recommended)
-- **Claude Sonnet 4** - Maximum accuracy
-- Understands complex commands
-- Handles ambiguity intelligently
+### With AI/ML API Key (Recommended)
+- **GPT-4o** - Maximum accuracy and understanding
+- Handles complex commands and ambiguity
+- Understands context and temporal expressions
 - 95%+ accuracy on payment intents
+- Structured JSON output with confidence scoring
 
 ### Without API Key (Mock Mode)
 - Pattern matching fallback
-- Basic functionality
-- 80%+ accuracy
-- Works immediately
+- Basic functionality for testing
+- 80%+ accuracy on simple commands
+- Works immediately, no setup required
 
 ---
 
 ## 🔑 Getting API Keys
 
-### 1. Anthropic (Claude AI) - Recommended
+### 1. AI/ML API (Required for Full Features)
 
 ```bash
-# Visit: https://console.anthropic.com/
-# Use code: ARCHACK20 for credits
+# Visit: https://aimlapi.com/
+# Sign up and get your API key
 # Copy your API key
 
-# Add to .env:
-ANTHROPIC_API_KEY=sk-ant-api03-your-key-here
+# Add to environment:
+export AIMLAPI_KEY="your_key_here"
+
+# Or add to .env file:
+AIMLAPI_KEY=your_key_here
 ```
 
-### 2. Arc Blockchain - Required for Production
+### 2. Arc Blockchain (Required for Transactions)
 
 ```bash
-# Contact Arc Protocol team
-# Get RPC endpoint and contract address
+# Get Arc Network access:
+# - RPC URL: https://mainnet.arc.network
+# - Chain ID: 4224
 
-# Add to .env:
-ARC_RPC_URL=https://mainnet.arc.network
-ARC_CONTRACT_ADDRESS=0xYourContractAddress
+# Create/import a wallet with funds for gas:
+# Option 1: Use existing private key
+export GAS_PAYER_KEY="0xyour_private_key"
+
+# Option 2: Generate new wallet (Python)
+python -c "from eth_account import Account; acc = Account.create(); print(f'Address: {acc.address}\nPrivate Key: {acc.key.hex()}')"
+
+# Add to environment:
+export ARC_RPC_URL="https://mainnet.arc.network"
+export GAS_PAYER_KEY="your_private_key"
+export ARC_CHAIN_ID="4224"
 ```
 
-### 3. ElevenLabs (Voice) - Optional
-
-```bash
-# Visit: https://elevenlabs.io/
-# Copy your API key
-
-# Add to .env:
-ELEVENLABS_API_KEY=your-key-here
-```
+**⚠️ Security Warning**: Never commit private keys to git. Use `.env` files (excluded in `.gitignore`).
 
 ---
 
@@ -91,7 +96,7 @@ ELEVENLABS_API_KEY=your-key-here
 
 ```bash
 # Start server
-./start.sh
+python main.py
 
 # Open browser
 open http://localhost:8000/docs
@@ -102,12 +107,11 @@ Click "Try it out" on any endpoint!
 ### Option 2: Interactive Test Client
 
 ```bash
-python3 test_client.py
+# Run interactive tests
+python test-client.py
 
-# Choose:
-# 1 - Run all tests
-# 2 - Test specific endpoint
-# 3 - Process custom command
+# Or run automated test suite
+python test-client.py --auto
 ```
 
 ### Option 3: Manual Testing (curl)
@@ -122,9 +126,9 @@ curl http://localhost:8000/alias/@alice
 # Process payment command
 curl -X POST http://localhost:8000/process_command \
   -H "Content-Type: application/json" \
-  -d '{"text": "Send $50 to @alice for lunch"}'
+  -d '{"text": "Send $50 to @alice for lunch", "user_id": "test_user"}'
 
-# Response:
+# Response (with AI/ML API):
 {
   "payment_type": "single",
   "intent": {
@@ -135,7 +139,11 @@ curl -X POST http://localhost:8000/process_command \
     "memo": "lunch"
   },
   "confidence": 0.95,
-  "confirmation_text": "Send $50 to @alice for lunch?"
+  "confirmation_text": "Send $50 to @alice for lunch?",
+  "_metadata": {
+    "model": "gpt-4o",
+    "parser": "real"
+  }
 }
 ```
 
@@ -148,13 +156,13 @@ curl -X POST http://localhost:8000/process_command \
 | `/` | GET | API info + demo aliases |
 | `/health` | GET | Health check + stats |
 | `/docs` | GET | Interactive API docs |
-| `/alias/register` | POST | Register @username |
-| `/alias/{alias}` | GET | Resolve alias |
-| `/address/{address}/alias` | GET | Reverse lookup |
-| `/process_command` | POST | Parse NLP command |
-| `/execute_payment` | POST | Execute payment |
+| `/alias/register` | POST | Register @username with Web3 signature |
+| `/alias/{alias}` | GET | Resolve alias to address |
+| `/alias/search` | GET | Search aliases by prefix |
+| `/address/{address}/alias` | GET | Reverse lookup (address → alias) |
+| `/process_command` | POST | Parse NLP command with AI |
+| `/execute_payment` | POST | Execute payment on blockchain |
 | `/history/{address}` | GET | Transaction history |
-| `/subscriptions/{address}` | GET | Active subscriptions |
 
 ---
 
@@ -178,9 +186,10 @@ The AI agent understands natural language:
 "Send @spotify $4.99 monthly"
 "Subscribe to @gym for $30 monthly"
 
-# With memo
+# With memo/context
 "Send $50 to @alice for lunch"
 "Pay @landlord $1200 for rent"
+"Transfer $1000 to @contractor for website work"
 ```
 
 ---
@@ -189,32 +198,53 @@ The AI agent understands natural language:
 
 ```
 bulut-backend/
-├── main.py              # ⭐ FastAPI application
-├── agent.py             # 🧠 Bulut AI Agent
-├── test_client.py       # 🧪 Interactive tests
-├── requirements.txt     # 📦 Dependencies
-├── .env.example         # ⚙️  Config template
-├── start.sh             # 🚀 Startup script
-└── QUICKSTART.md        # 📚 This file
+├── main.py                # ⭐ FastAPI app + Web3 integration
+├── agent.py               # 🧠 AI parsing (Real + Mock)
+├── blockchain_service.py  # 🔗 Arc blockchain service
+├── test-client.py         # 🧪 Interactive tests
+├── test-backend.py        # 🧪 Comprehensive test suite
+├── requirements.txt       # 📦 Dependencies
+├── .env.example           # ⚙️  Config template
+└── README.md              # 📚 Full documentation
 ```
 
 ---
 
-## 🌟 AI Agent Deep Dive
+## 🌟 How It Works
 
-### How It Works
+### 1. Register Alias with Web3 Signature
 
 ```python
-# 1. User input
+from eth_account import Account
+from eth_account.messages import encode_defunct
+
+# Create signed message
+message = f"Estoy registrando el alias @alice para la dirección 0x123..."
+message_hash = encode_defunct(text=message)
+signature = Account.sign_message(message_hash, private_key=private_key)
+
+# Send to API
+requests.post("/alias/register", json={
+    "alias": "@alice",
+    "address": "0x123...",
+    "signature": signature.signature.hex()
+})
+```
+
+### 2. Parse Natural Language Command
+
+```python
+# User input
 "Send $50 to @alice for lunch"
 
-# 2. Bulut AI Agent (agent.py)
-BulutAIAgent.parse_payment(text) →
-  - Calls Claude API
-  - Uses specialized prompt
-  - Validates output
+# AI/ML API (GPT-4o) processes:
+# 1. Extract amount: $50
+# 2. Extract recipient: @alice
+# 3. Extract memo: "lunch"
+# 4. Determine type: single payment
+# 5. Calculate confidence: 0.95
 
-# 3. Structured output
+# Structured output:
 {
   "payment_type": "single",
   "intent": {
@@ -224,29 +254,28 @@ BulutAIAgent.parse_payment(text) →
   },
   "confidence": 0.95
 }
-
-# 4. Execute on blockchain
-blockchain_service.send_payment(...)
 ```
 
-### Confidence Scoring
+### 3. Execute on Blockchain
 
-- **0.9-1.0**: High confidence - auto-execute safe
-- **0.7-0.89**: Good confidence - confirm with user
-- **0.5-0.69**: Low confidence - ask for clarification
-- **<0.5**: Error - cannot parse reliably
+```python
+# Resolve alias
+address = await alias_service.resolve("@alice")
+# → "0x742d35cc..."
 
-### Error Handling
+# Execute via Web3
+tx_result = await blockchain_service.send_payment(
+    from_address=user_address,
+    to_address=address,
+    amount=50.0,
+    currency="ARC"
+)
 
-```json
+# Returns:
 {
-  "payment_type": "single",
-  "confidence": 0.3,
-  "error": {
-    "code": "missing_amount",
-    "message": "Could not determine payment amount",
-    "suggestions": ["Try: 'Send $50 to @alice'"]
-  }
+  "success": true,
+  "transaction_hash": "0xabc123...",
+  "explorer_url": "https://explorer.arc.network/tx/0xabc123..."
 }
 ```
 
@@ -257,43 +286,94 @@ blockchain_service.send_payment(...)
 ### Environment Variables (.env)
 
 ```bash
-# Required for AI features
-ANTHROPIC_API_KEY=sk-ant-api03-...
+# ============ REQUIRED ============
 
-# Required for blockchain
+# AI/ML API for NLP processing
+AIMLAPI_KEY=your_api_key_here
+
+# Arc Blockchain
 ARC_RPC_URL=https://mainnet.arc.network
-ARC_CONTRACT_ADDRESS=0x...
+GAS_PAYER_KEY=your_private_key_here
 
-# Optional
-ELEVENLABS_API_KEY=...        # Voice features
-JWT_SECRET=...                # Security
-ALLOWED_ORIGINS=*             # CORS
+# ============ OPTIONAL ============
+
+# Blockchain Configuration
+ARC_CHAIN_ID=4224
+ARC_USDC_ADDRESS=0xA0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48
+ARC_EXPLORER_URL=https://explorer.arc.network
+
+# Server Configuration
+HOST=0.0.0.0
+PORT=8000
+APP_ENV=development
+DEBUG=true
+
+# Security
+JWT_SECRET=your-secret-key
+ALLOWED_ORIGINS=*
+
+# Storage
+DATABASE_URL=sqlite:///./bulut.db
 ```
 
 ### Feature Flags
 
 ```bash
-ENABLE_AI_AGENT=true          # Use Claude AI
-ENABLE_VOICE=false            # Voice confirmations
-ENABLE_SUBSCRIPTIONS=true     # Recurring payments
-RATE_LIMIT_ENABLED=false      # Rate limiting
+# Enable/disable features
+RATE_LIMIT_ENABLED=false      # Rate limiting (requires Redis)
+DEBUG=true                    # Debug logging
 ```
 
 ---
 
 ## 🐛 Troubleshooting
 
-### "Module anthropic not found"
+### "Module not found" errors
 
 ```bash
-pip install anthropic
+# Install all dependencies
+pip install -r requirements.txt
+
+# Or install individually:
+pip install fastapi uvicorn pydantic httpx web3 openai
 ```
 
-### "API key not configured"
+### "AIMLAPI_KEY not configured"
 
 ```bash
+# Add to .env file:
+AIMLAPI_KEY=your_key_here
+
+# Or export in terminal:
+export AIMLAPI_KEY="your_key_here"
+
+# Restart server
+python main.py
+```
+
+### "Web3 not connected to network"
+
+```bash
+# Check RPC URL
+curl https://mainnet.arc.network
+
+# Verify in .env:
+ARC_RPC_URL=https://mainnet.arc.network
+
+# Check network status
+python -c "from web3 import Web3; w3 = Web3(Web3.HTTPProvider('https://mainnet.arc.network')); print(f'Connected: {w3.is_connected()}, Chain ID: {w3.eth.chain_id}')"
+```
+
+### "GAS_PAYER_KEY not set"
+
+```bash
+# Generate new wallet
+python -c "from eth_account import Account; acc = Account.create(); print(f'Address: {acc.address}\nPrivate Key: {acc.key.hex()}')"
+
+# Fund the wallet with ARC tokens for gas
+
 # Add to .env:
-ANTHROPIC_API_KEY=sk-ant-api03-your-key-here
+GAS_PAYER_KEY=0xyour_private_key_here
 ```
 
 ### "Port 8000 already in use"
@@ -306,81 +386,43 @@ lsof -ti:8000 | xargs kill -9
 PORT=8001 python main.py
 ```
 
-### Agent not working
-
-```bash
-# Check agent.py exists
-ls agent.py
-
-# Check API key in .env
-cat .env | grep ANTHROPIC_API_KEY
-
-# Test agent directly
-python agent.py
-```
-
 ---
 
 ## 📊 Performance
 
-### With Claude AI
-- Command parsing: **50-200ms**
+### With AI/ML API (GPT-4o)
+- Command parsing: **200-500ms** (API call time)
 - Accuracy: **95%+**
-- Handles ambiguity: ✅
+- Handles complex queries: ✅
+- Understands context: ✅
 
 ### Mock Mode (No API Key)
 - Command parsing: **< 10ms**
-- Accuracy: **80%+**
-- Basic patterns only
+- Accuracy: **80%+** (simple patterns only)
+- Basic patterns only: ⚠️
 
-### API Responses
+### API Performance
 - Health check: **< 5ms**
-- Alias lookup: **< 1ms**
-- Payment execution: **< 100ms**
+- Alias lookup: **< 1ms** (in-memory)
+- Blockchain transaction: **1-3 seconds** (network dependent)
 
 ---
 
-## 🚀 Deployment
-
-### Development (Current)
-```bash
-./start.sh
-```
-
-### Production Options
-
-**1. Docker**
-```bash
-docker build -t bulut-backend .
-docker run -p 8000:8000 --env-file .env bulut-backend
-```
-
-**2. Cloudflare Workers**
-```bash
-wrangler publish
-```
-
-**3. Traditional Server**
-```bash
-pip install -r requirements.txt
-gunicorn main:app -w 4 -k uvicorn.workers.UvicornWorker
-```
-
----
-
-## 💪 Next Steps
+## 🚀 Next Steps
 
 1. ✅ **Backend Running** - You're here!
-2. 🔑 **Add API Keys** - Get full features
-3. 🧪 **Test Everything** - Run test_client.py
-4. 🎨 **Build Frontend** - Connect to API
-5. 🚀 **Deploy** - Go live!
+2. 🔑 **Add API Keys** - Get AI/ML API key
+3. 💰 **Fund Gas Payer** - Add ARC tokens for transactions
+4. 🧪 **Test Everything** - Run test-client.py
+5. 🎨 **Build Frontend** - Connect to API
+6. 🚀 **Deploy** - Go live!
 
 ---
 
 ## 🎓 Learn More
 
-### Test Agent Directly
+### Test AI Agent Directly
+
 ```bash
 # Run agent tests
 python agent.py
@@ -398,16 +440,35 @@ asyncio.run(test())
 "
 ```
 
-### Explore API
+### Check Blockchain Connection
+
 ```bash
-# All endpoints
+# Test Web3 connection
+python -c "
+from blockchain_service import BlockchainService
+from main import storage
+
+service = BlockchainService(
+    rpc_url='https://mainnet.arc.network',
+    usdc_contract_address='0xA0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48',
+    gas_payer_key='',
+    storage_instance=storage
+)
+print('Blockchain service initialized')
+"
+```
+
+### Explore API
+
+```bash
+# View all endpoints
 curl http://localhost:8000/openapi.json | jq
 
-# See configuration
-curl http://localhost:8000/ | jq .config
+# Check configuration
+curl http://localhost:8000/ | jq
 
 # Check AI status
-curl http://localhost:8000/ | jq .config.anthropic_configured
+curl http://localhost:8000/health | jq '.services'
 ```
 
 ---
@@ -421,23 +482,27 @@ curl http://localhost:8000/health
 
 ### View Logs
 ```bash
-# Server logs show:
-# - AI agent status
+# Server shows detailed logs including:
+# - AI agent initialization
+# - Web3 connection status
 # - API key configuration
 # - Request processing
-# - Errors and warnings
+# - Transaction status
 ```
 
 ### Common Issues
 
 **Issue**: Low confidence scores  
-**Solution**: Check if ANTHROPIC_API_KEY is set. Mock parser has lower accuracy.
+**Solution**: Ensure AIMLAPI_KEY is set. Mock parser has lower accuracy.
 
 **Issue**: "Recipient not found"  
 **Solution**: Register alias first with `/alias/register` or use demo aliases.
 
-**Issue**: Import errors  
-**Solution**: Run `pip install -r requirements.txt`
+**Issue**: Transaction fails  
+**Solution**: Ensure gas payer wallet has sufficient ARC tokens for gas.
+
+**Issue**: Signature verification fails  
+**Solution**: Ensure message format matches exactly: `"Estoy registrando el alias {alias} para la dirección {address}"`
 
 ---
 
@@ -446,6 +511,7 @@ curl http://localhost:8000/health
 ✅ Server starts without errors  
 ✅ http://localhost:8000/docs loads  
 ✅ Health check returns "healthy"  
+✅ Web3 shows "Connected to chain ID: 4224"  
 ✅ Can get demo alias (@alice)  
 ✅ Can process command "Send $50 to @alice"  
 ✅ Test client runs successfully  
@@ -456,11 +522,13 @@ curl http://localhost:8000/health
 
 ## 🌟 Key Features
 
-✅ **Full Natural Language Processing**  
-✅ **Claude Sonnet 4 Integration**  
+✅ **GPT-4o AI Processing** via AI/ML API  
+✅ **Real Blockchain Transactions** via Web3.py  
+✅ **Cryptographic Security** with Web3 signatures  
+✅ **Natural Language Understanding**  
 ✅ **Single, Split, Subscription Payments**  
 ✅ **Alias System (@username)**  
-✅ **Transaction History**  
+✅ **Transaction History with Explorer Links**  
 ✅ **Mock & Real AI Modes**  
 ✅ **Production-Ready Code**  
 ✅ **Comprehensive Tests**  
