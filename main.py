@@ -47,8 +47,8 @@ class Config:
     HOST = os.getenv("HOST", "0.0.0.0")
     PORT = int(os.getenv("PORT") or 8000)
     
-    ANTHROPIC_API_KEY = os.getenv("ANTHROPIC_API_KEY", "")
-    ANTHROPIC_API_URL = os.getenv("ANTHROPIC_API_URL", "https://api.anthropic.com/v1")
+    ANTHROPIC_API_KEY = os.getenv("AI_AGENT_API_KEY", "")
+    ANTHROPIC_API_URL = os.getenv("AI_AGENT_API_URL", "https://api.aimlapi.com/v1")
     
     ARC_RPC_URL = os.getenv("ARC_RPC_URL", "https://mainnet.arc.network")
     ARC_EXPLORER_URL = os.getenv("ARC_EXPLORER_URL", "https://explorer.arc.network")
@@ -514,3 +514,4 @@ async def execute_bulut_payment(request: ExecutePaymentRequest, user_address_hea
 if __name__ == "__main__":
     import uvicorn
     uvicorn.run("main:app", host=config.HOST, port=config.PORT, reload=config.DEBUG)
+
