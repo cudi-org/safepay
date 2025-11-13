@@ -14,8 +14,8 @@ try:
     from pydantic import BaseModel, Field, validator
     import httpx
 except ImportError as e:
-    print(f"❌ Missing dependency: {e}")
-    print("📦 Install with: pip install fastapi uvicorn pydantic httpx")
+    print(f"Missing dependency: {e}")
+    print("Install with: pip install fastapi uvicorn pydantic httpx")
     exit(1)
 
 from web3 import Web3
@@ -26,13 +26,13 @@ from eth_account.messages import encode_defunct
 try:
     from agent import parse_payment_command
 except ImportError:
-    print("🚨 CRITICAL: agent.py not found. AI endpoints will fail.")
+    print("CRITICAL: agent.py not found. AI endpoints will fail.")
     parse_payment_command = None
 
 try:
     from blockchain_service import BlockchainService
 except ImportError:
-    print("🚨 CRITICAL: blockchain_service.py not found. Blockchain endpoints will fail.")
+    print("CRITICAL: blockchain_service.py not found. Blockchain endpoints will fail.")
     BlockchainService = None 
 
 # ============================================================================
@@ -47,8 +47,12 @@ class Config:
     HOST = os.getenv("HOST", "0.0.0.0")
     PORT = int(os.getenv("PORT") or 8000)
     
-    ANTHROPIC_API_KEY = os.getenv("AI_AGENT_API_KEY", "")
-    ANTHROPIC_API_URL = os.getenv("AI_AGENT_API_URL", "https://api.aimlapi.com/v1")
+    # Se mantienen las variables originales de Anthropic (aunque no se usen)
+    ANTHROPIC_API_KEY = os.getenv("ANTHROPIC_API_KEY", "")
+    ANTHROPIC_API_URL = os.getenv("ANTHROPIC_API_URL", "https://api.anthropic.com/v1")
+    
+    # Se añade la clave para el Agente de IA, asumiendo AIMLAPI_KEY es la variable de entorno
+    AI_AGENT_API_KEY = os.getenv("AIMLAPI_KEY", "") 
     
     ARC_RPC_URL = os.getenv("ARC_RPC_URL", "https://mainnet.arc.network")
     ARC_EXPLORER_URL = os.getenv("ARC_EXPLORER_URL", "https://explorer.arc.network")
@@ -86,6 +90,7 @@ class Config:
             "environment": cls.ENVIRONMENT,
             "debug": cls.DEBUG,
             "anthropic_configured": bool(cls.ANTHROPIC_API_KEY),
+            "ai_agent_configured": bool(cls.AI_AGENT_API_KEY),
             "elevenlabs_configured": bool(cls.ELEVENLABS_API_KEY),
             "arc_chain_id": cls.ARC_CHAIN_ID,
             "rate_limiting": cls.RATE_LIMIT_ENABLED
@@ -204,7 +209,7 @@ class AliasService:
                 detail={"error": "invalid_signature", "message": str(e)}
             )
         except Exception as e:
-             raise HTTPException(
+            raise HTTPException(
                 status_code=status.HTTP_400_BAD_REQUEST, 
                 detail={"error": "signature_error", "message": f"Error al procesar la firma: {str(e)}"}
             )
@@ -302,16 +307,16 @@ else:
 
 ai_agent = None 
 if parse_payment_command:
-    print("✅ AI parsing function is available.")
+    print("AI parsing function is available.")
 else:
-    print("⚠️ AI parsing function is missing.")
+    print("AI parsing function is missing.")
 
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    print(f"🌥️ {config.APP_NAME} started")
+    print(f"{config.APP_NAME} started")
     yield
-    print(f"👋 {config.APP_NAME} stopped")
+    print(f"{config.APP_NAME} stopped")
 
 app = FastAPI(title=config.APP_NAME, version=config.API_VERSION, lifespan=lifespan)
 app.add_middleware(
@@ -399,14 +404,16 @@ async def process_bulut_command(command: ProcessCommandRequest):
         raise HTTPException(status_code=503, detail="AI agent is not configured or agent.py is missing.")
     
     try:
+        # ⚠️ CAMBIO 2: Se pasa la clave de la API desde la configuración del entorno a la función del agente.
         intent_data = await parse_payment_command(
             text=command.text,
+            api_key=config.AI_AGENT_API_KEY,
             user_id=command.user_id,
             timezone=command.timezone
         )
         
         if intent_data.get("error"):
-            print(f"❌ AI Parsing Error: {intent_data.get('error')}")
+            print(f"AI Parsing Error: {intent_data.get('error')}")
             raise HTTPException(status_code=400, detail=intent_data.get("error"))
 
         intent_id = "intent_" + uuid.uuid4().hex[:16]
@@ -415,7 +422,7 @@ async def process_bulut_command(command: ProcessCommandRequest):
         return PaymentIntent(**intent_data)
 
     except Exception as e:
-        print(f"❌ /process_command Error: {str(e)}")
+        print(f"/process_command Error: {str(e)}")
         raise HTTPException(status_code=500, detail=f"Error processing command: {str(e)}")
 
 
@@ -500,7 +507,7 @@ async def execute_bulut_payment(request: ExecutePaymentRequest, user_address_hea
         )
 
     except Exception as e:
-        print(f"❌ /execute_payment Error: {str(e)}")
+        print(f"/execute_payment Error: {str(e)}")
         return TransactionResponse(
             success=False,
             timestamp=datetime.utcnow().isoformat(),
@@ -514,4 +521,3 @@ async def execute_bulut_payment(request: ExecutePaymentRequest, user_address_hea
 if __name__ == "__main__":
     import uvicorn
     uvicorn.run("main:app", host=config.HOST, port=config.PORT, reload=config.DEBUG)
-
