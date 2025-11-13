@@ -14,8 +14,8 @@ try:
     from pydantic import BaseModel, Field, validator
     import httpx
 except ImportError as e:
-    print(f"Missing dependency: {e}")
-    print("Install with: pip install fastapi uvicorn pydantic httpx")
+    print(f"❌ Missing dependency: {e}")
+    print("📦 Install with: pip install fastapi uvicorn pydantic httpx")
     exit(1)
 
 from web3 import Web3
@@ -26,14 +26,21 @@ from eth_account.messages import encode_defunct
 try:
     from agent import parse_payment_command
 except ImportError:
-    print("CRITICAL: agent.py not found. AI endpoints will fail.")
+    print("🚨 CRITICAL: agent.py not found. AI endpoints will fail.")
     parse_payment_command = None
 
 try:
     from blockchain_service import BlockchainService
 except ImportError:
-    print("CRITICAL: blockchain_service.py not found. Blockchain endpoints will fail.")
+    print("🚨 CRITICAL: blockchain_service.py not found. Blockchain endpoints will fail.")
     BlockchainService = None 
+
+# 🆕 NUEVO: Importar CircleService
+try:
+    from circle_service import CircleService
+except ImportError:
+    print("🚨 CRITICAL: circle_service.py not found. Circle functionality will fail.")
+    CircleService = None
 
 # ============================================================================
 # CONFIGURATION
@@ -47,20 +54,27 @@ class Config:
     HOST = os.getenv("HOST", "0.0.0.0")
     PORT = int(os.getenv("PORT") or 8000)
     
-    # Se mantienen las variables originales de Anthropic (aunque no se usen)
+    # AI CONFIG
     ANTHROPIC_API_KEY = os.getenv("ANTHROPIC_API_KEY", "")
     ANTHROPIC_API_URL = os.getenv("ANTHROPIC_API_URL", "https://api.anthropic.com/v1")
+    AI_AGENT_API_KEY = os.getenv("AIMLAPI_KEY", "")
     
-    # Se añade la clave para el Agente de IA, asumiendo AIMLAPI_KEY es la variable de entorno
-    AI_AGENT_API_KEY = os.getenv("AIMLAPI_KEY", "") 
-    
+    # BLOCKCHAIN CONFIG
     ARC_RPC_URL = os.getenv("ARC_RPC_URL", "https://mainnet.arc.network")
     ARC_EXPLORER_URL = os.getenv("ARC_EXPLORER_URL", "https://explorer.arc.network")
     ARC_CONTRACT_ADDRESS = os.getenv("ARC_CONTRACT_ADDRESS", "0xBulutContract123")
     ARC_CHAIN_ID = int(os.getenv("ARC_CHAIN_ID", "4224"))
     
-    GAS_PAYER_KEY = os.getenv("GAS_PAYER_KEY", "")
+    # ❌ REMOVIDO: GAS_PAYER_KEY ya no se necesita para P2P (lo maneja Circle)
+    # GAS_PAYER_KEY = os.getenv("GAS_PAYER_KEY", "") 
     ARC_USDC_ADDRESS = os.getenv("ARC_USDC_ADDRESS", "0xA0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48")
+    
+    # 🆕 NUEVO: CONFIGURACIÓN DE CIRCLE
+    CIRCLE_API_KEY = os.getenv("CIRCLE_API_KEY", "")
+    CIRCLE_BASE_URL = os.getenv("CIRCLE_BASE_URL", "https://api.circle.com/v1/w3s")
+    CIRCLE_ENTITY_ID = os.getenv("CIRCLE_ENTITY_ID", "")
+    
+    # ... (El resto de la configuración se mantiene) ...
     
     ELEVENLABS_API_KEY = os.getenv("ELEVENLABS_API_KEY", "")
     ELEVENLABS_API_URL = os.getenv("ELEVENLABS_API_URL", "https://api.elevenlabs.io/v1")
@@ -91,6 +105,7 @@ class Config:
             "debug": cls.DEBUG,
             "anthropic_configured": bool(cls.ANTHROPIC_API_KEY),
             "ai_agent_configured": bool(cls.AI_AGENT_API_KEY),
+            "circle_configured": bool(cls.CIRCLE_API_KEY and cls.CIRCLE_ENTITY_ID), # 🆕 NUEVO
             "elevenlabs_configured": bool(cls.ELEVENLABS_API_KEY),
             "arc_chain_id": cls.ARC_CHAIN_ID,
             "rate_limiting": cls.RATE_LIMIT_ENABLED
@@ -99,7 +114,7 @@ class Config:
 config = Config()
 
 # ============================================================================
-# DATA MODELS
+# DATA MODELS (Se mantiene sin cambios)
 # ============================================================================
 class PaymentIntent(BaseModel):
     payment_type: str
@@ -155,7 +170,7 @@ class HealthResponse(BaseModel):
     stats: Dict[str, int]
 
 # ============================================================================
-# IN-MEMORY STORAGE
+# IN-MEMORY STORAGE (Se mantiene sin cambios)
 # ============================================================================
 class InMemoryStorage:
     def __init__(self):
@@ -187,7 +202,7 @@ class InMemoryStorage:
 storage = InMemoryStorage()
 
 # ============================================================================
-# SERVICES
+# SERVICES (Se mantiene AliasService y TransactionService)
 # ============================================================================
 class AliasService:
     @staticmethod
@@ -295,28 +310,39 @@ class TransactionService:
 alias_service = AliasService()
 transaction_service = TransactionService()
 
+# 🆕 NUEVO: Inicialización del CircleService
+if CircleService:
+    circle_service = CircleService(
+        api_key=config.CIRCLE_API_KEY,
+        base_url=config.CIRCLE_BASE_URL,
+        entity_id=config.CIRCLE_ENTITY_ID
+    )
+else:
+    circle_service = None
+
+# 🔄 MODIFICADO: Ahora se pasa 'circle_service' a 'BlockchainService'
 if BlockchainService:
     blockchain_service = BlockchainService(
         rpc_url=config.ARC_RPC_URL, 
         usdc_contract_address=config.ARC_USDC_ADDRESS, 
-        gas_payer_key=config.GAS_PAYER_KEY,
-        storage_instance=storage
+        storage_instance=storage,
+        circle_service=circle_service # ⬅️ Inyección de dependencia
     )
 else:
     blockchain_service = None
 
 ai_agent = None 
 if parse_payment_command:
-    print("AI parsing function is available.")
+    print("✅ AI parsing function is available.")
 else:
-    print("AI parsing function is missing.")
+    print("⚠️ AI parsing function is missing.")
 
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    print(f"{config.APP_NAME} started")
+    print(f"🌥️ {config.APP_NAME} started")
     yield
-    print(f"{config.APP_NAME} stopped")
+    print(f"👋 {config.APP_NAME} stopped")
 
 app = FastAPI(title=config.APP_NAME, version=config.API_VERSION, lifespan=lifespan)
 app.add_middleware(
@@ -328,7 +354,7 @@ app.add_middleware(
 )
 
 # ============================================================================
-# ROUTES
+# ROUTES (Se mantienen sin cambios)
 # ============================================================================
 
 @app.get("/")
@@ -339,7 +365,7 @@ async def root():
 async def health():
     return HealthResponse(status="healthy", timestamp=datetime.utcnow().isoformat(),
         version=config.API_VERSION, environment=config.ENVIRONMENT,
-        services={"api": "operational", "blockchain": "ok" if blockchain_service else "failed"},
+        services={"api": "operational", "blockchain": "ok" if blockchain_service else "failed", "circle": "ok" if circle_service and circle_service.is_real else "simulated"},
         stats={"aliases": len(storage.alias_to_address), "transactions": len(storage.transactions)})
 
 # --- ALIAS MANAGEMENT ROUTES ---
@@ -385,7 +411,7 @@ async def get_transaction(tx_hash: str):
         raise HTTPException(404, detail={"error": "transaction_not_found"})
     return tx
 
-# --- ERROR HANDLERS ---
+# --- ERROR HANDLERS (Se mantienen sin cambios) ---
 @app.exception_handler(HTTPException)
 async def http_exception_handler(request: Request, exc: HTTPException):
     return JSONResponse(status_code=exc.status_code,
@@ -397,14 +423,13 @@ async def general_exception_handler(request: Request, exc: Exception):
                         content={"error": {"code": "internal_error", "message": str(exc)},
                                  "timestamp": datetime.utcnow().isoformat()})
 
-# --- AI & PAYMENT EXECUTION ---
+# --- AI & PAYMENT EXECUTION (Solo se modificó el pase de API Key) ---
 @app.post("/process_command", response_model=PaymentIntent)
 async def process_bulut_command(command: ProcessCommandRequest):
     if not parse_payment_command:
         raise HTTPException(status_code=503, detail="AI agent is not configured or agent.py is missing.")
     
     try:
-        # ⚠️ CAMBIO 2: Se pasa la clave de la API desde la configuración del entorno a la función del agente.
         intent_data = await parse_payment_command(
             text=command.text,
             api_key=config.AI_AGENT_API_KEY,
@@ -413,7 +438,7 @@ async def process_bulut_command(command: ProcessCommandRequest):
         )
         
         if intent_data.get("error"):
-            print(f"AI Parsing Error: {intent_data.get('error')}")
+            print(f"❌ AI Parsing Error: {intent_data.get('error')}")
             raise HTTPException(status_code=400, detail=intent_data.get("error"))
 
         intent_id = "intent_" + uuid.uuid4().hex[:16]
@@ -422,7 +447,7 @@ async def process_bulut_command(command: ProcessCommandRequest):
         return PaymentIntent(**intent_data)
 
     except Exception as e:
-        print(f"/process_command Error: {str(e)}")
+        print(f"❌ /process_command Error: {str(e)}")
         raise HTTPException(status_code=500, detail=f"Error processing command: {str(e)}")
 
 
@@ -449,14 +474,16 @@ async def execute_bulut_payment(request: ExecutePaymentRequest, user_address_hea
         
         tx_result = {}
         
+        # 🔄 MODIFICADO: 'blockchain_service' ahora usa Circle para 'single'
         if payment_type == "single":
             tx_result = await blockchain_service.send_payment(
                 from_address=request.user_address,
                 to_address=to_address,
                 amount=intent_data.get("amount", 0.0),
-                currency=intent_data.get("currency", "ARC"),
+                currency=intent_data.get("currency", "USDC"),
                 memo=intent_data.get("memo"),
-                signature=request.user_signature
+                # El signature ya no se usa para P2P si Circle lo gestiona
+                signature=request.user_signature 
             )
         
         elif payment_type == "subscription":
@@ -507,7 +534,7 @@ async def execute_bulut_payment(request: ExecutePaymentRequest, user_address_hea
         )
 
     except Exception as e:
-        print(f"/execute_payment Error: {str(e)}")
+        print(f"❌ /execute_payment Error: {str(e)}")
         return TransactionResponse(
             success=False,
             timestamp=datetime.utcnow().isoformat(),
