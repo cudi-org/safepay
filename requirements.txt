@@ -1,0 +1,69 @@
+# ============================================================================
+# Bulut Backend - Python Dependencies
+# ============================================================================
+
+# Core Framework (Required)
+fastapi==0.115.0
+uvicorn[standard]==0.30.6
+pydantic==2.9.2
+
+# HTTP Client (Required)
+httpx==0.27.2
+
+# AI Agent 
+anthropic==0.39.0
+
+# Environment Variables (Recommended)
+python-dotenv==1.0.1
+
+# ============================================================================
+# Optional Dependencies
+# ============================================================================
+
+# Testing
+requests==2.31.0
+pytest==8.3.3
+pytest-asyncio==0.24.0
+
+# Database (for production)
+sqlalchemy==2.0.35
+#asyncpg==0.29.0          
+aiosqlite==0.20.0        
+
+# Rate Limiting
+slowapi==0.1.9
+redis==5.0.1
+
+# Security
+python-jose[cryptography]==3.3.0
+passlib[bcrypt]==1.7.4
+python-multipart==0.0.9
+
+# Monitoring
+sentry-sdk[fastapi]==2.14.0
+
+# Blockchain
+web3==6.19.0
+
+
+# ============================================================================
+# Installation Commands
+# ============================================================================
+
+# Minimal (core features only):
+#   pip install fastapi uvicorn pydantic httpx anthropic python-dotenv
+
+# Standard (recommended):
+#   pip install -r requirements.txt
+
+# Development (with testing):
+#   pip install -r requirements.txt
+#   pip install pytest pytest-asyncio
+
+# Production (full features):
+#   pip install -r requirements.txt
+#   pip install sqlalchemy asyncpg redis sentry-sdk
+
+
+# ============================================================================
+
