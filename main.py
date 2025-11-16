@@ -26,21 +26,29 @@ from eth_account.messages import encode_defunct
 try:
     from agent import parse_payment_command
 except ImportError:
-    print("🚨 CRITICAL: agent.py not found. AI endpoints will fail.")
+    print(" CRITICAL: agent.py not found. AI endpoints will fail.")
     parse_payment_command = None
 
 try:
     from blockchain_service import BlockchainService
 except ImportError:
-    print("🚨 CRITICAL: blockchain_service.py not found. Blockchain endpoints will fail.")
+    print(" CRITICAL: blockchain_service.py not found. Blockchain endpoints will fail.")
     BlockchainService = None 
 
-# 🆕 NUEVO: Importar CircleService
 try:
     from circle_service import CircleService
 except ImportError:
-    print("🚨 CRITICAL: circle_service.py not found. Circle functionality will fail.")
+    print(" CRITICAL: circle_service.py not found. Circle functionality will fail.")
     CircleService = None
+
+try:
+    from utils import normalize_address
+except ImportError:
+    def normalize_address(address: str, is_alias: bool = False) -> str:
+        if not isinstance(address, str): return ""
+        if is_alias: return address.lower().lstrip('@')
+        return address.lower().lstrip('0x')
+
 
 # ============================================================================
 # CONFIGURATION
@@ -65,16 +73,13 @@ class Config:
     ARC_CONTRACT_ADDRESS = os.getenv("ARC_CONTRACT_ADDRESS", "0xBulutContract123")
     ARC_CHAIN_ID = int(os.getenv("ARC_CHAIN_ID", "4224"))
     
-    # ❌ REMOVIDO: GAS_PAYER_KEY ya no se necesita para P2P (lo maneja Circle)
-    # GAS_PAYER_KEY = os.getenv("GAS_PAYER_KEY", "") 
     ARC_USDC_ADDRESS = os.getenv("ARC_USDC_ADDRESS", "0xA0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48")
     
-    # 🆕 NUEVO: CONFIGURACIÓN DE CIRCLE
+    # CIRCLE CONFIGURATION
     CIRCLE_API_KEY = os.getenv("CIRCLE_API_KEY", "")
     CIRCLE_BASE_URL = os.getenv("CIRCLE_BASE_URL", "https://api.circle.com/v1/w3s")
     CIRCLE_ENTITY_ID = os.getenv("CIRCLE_ENTITY_ID", "")
     
-    # ... (El resto de la configuración se mantiene) ...
     
     ELEVENLABS_API_KEY = os.getenv("ELEVENLABS_API_KEY", "")
     ELEVENLABS_API_URL = os.getenv("ELEVENLABS_API_URL", "https://api.elevenlabs.io/v1")
@@ -105,7 +110,7 @@ class Config:
             "debug": cls.DEBUG,
             "anthropic_configured": bool(cls.ANTHROPIC_API_KEY),
             "ai_agent_configured": bool(cls.AI_AGENT_API_KEY),
-            "circle_configured": bool(cls.CIRCLE_API_KEY and cls.CIRCLE_ENTITY_ID), # 🆕 NUEVO
+            "circle_configured": bool(cls.CIRCLE_API_KEY and cls.CIRCLE_ENTITY_ID),
             "elevenlabs_configured": bool(cls.ELEVENLABS_API_KEY),
             "arc_chain_id": cls.ARC_CHAIN_ID,
             "rate_limiting": cls.RATE_LIMIT_ENABLED
@@ -114,7 +119,7 @@ class Config:
 config = Config()
 
 # ============================================================================
-# DATA MODELS (Se mantiene sin cambios)
+# DATA MODELS
 # ============================================================================
 class PaymentIntent(BaseModel):
     payment_type: str
@@ -142,13 +147,13 @@ class AliasRegistration(BaseModel):
     
     @validator('alias')
     def normalize_alias(cls, v):
-        return v.lower().strip()
+        return normalize_address(v, is_alias=True)
     
     @validator('address')
     def validate_address(cls, v):
         if not v.startswith('0x'):
             raise ValueError("Address must start with 0x")
-        return v.lower()
+        return normalize_address(v) # Normalización
 
 class TransactionResponse(BaseModel):
     success: bool
@@ -170,7 +175,7 @@ class HealthResponse(BaseModel):
     stats: Dict[str, int]
 
 # ============================================================================
-# IN-MEMORY STORAGE (Se mantiene sin cambios)
+# IN-MEMORY STORAGE
 # ============================================================================
 class InMemoryStorage:
     def __init__(self):
@@ -192,9 +197,12 @@ class InMemoryStorage:
             ("@demo", "0x4E5B2ea1F6E7eA1e5e5E5e5e5e5e5e5e5e5e5e5"),
         ]
         for alias, address in demo_aliases:
-            self.alias_to_address[alias] = address
-            self.address_to_alias[address] = alias
-            self.alias_metadata[alias] = {
+            # Normalización al guardar data demo
+            normalized_alias = normalize_address(alias, is_alias=True)
+            normalized_address = normalize_address(address)
+            self.alias_to_address[normalized_alias] = normalized_address
+            self.address_to_alias[normalized_address] = normalized_alias
+            self.alias_metadata[normalized_alias] = {
                 "registered_at": datetime.utcnow().isoformat(),
                 "last_used": datetime.utcnow().isoformat()
             }
@@ -202,20 +210,18 @@ class InMemoryStorage:
 storage = InMemoryStorage()
 
 # ============================================================================
-# SERVICES (Se mantiene AliasService y TransactionService)
+# SERVICES
 # ============================================================================
 class AliasService:
     @staticmethod
     async def register(alias: str, address: str, signature: str) -> Dict:
-        alias = alias.lower()
-        address = address.lower()
-
+        
         try:
-            message_to_sign = f"Estoy registrando el alias {alias} para la dirección {address}"
+            message_to_sign = f"Estoy registrando el alias @{alias} para la dirección {address}"
             message_hash = encode_defunct(text=message_to_sign)
             recovered_address = Account.recover_message(message_hash, signature=signature)
             
-            if recovered_address.lower() != address.lower():
+            if normalize_address(recovered_address) != address:
                 raise ValueError("La firma no coincide con la dirección.")
 
         except ValueError as e:
@@ -245,35 +251,39 @@ class AliasService:
 
     @staticmethod
     async def resolve(alias: str) -> Optional[str]:
-        alias = alias.lower()
-        if not alias.startswith('@'):
-            alias = '@' + alias
-        return storage.alias_to_address.get(alias)
+        normalized_alias = normalize_address(alias, is_alias=True)
+        return storage.alias_to_address.get(normalized_alias)
 
     @staticmethod
     async def get_alias(address: str) -> Optional[str]:
-        return storage.address_to_alias.get(address.lower())
+        normalized_address = normalize_address(address)
+        return storage.address_to_alias.get(normalized_address)
 
     @staticmethod
-    async def delete(alias: str) -> bool:
-        alias = alias.lower()
-        if alias not in storage.alias_to_address:
+    async def delete(alias: str, requesting_address: str) -> bool:
+        normalized_alias = normalize_address(alias, is_alias=True)
+        normalized_requesting_address = normalize_address(requesting_address)
+
+        if normalized_alias not in storage.alias_to_address:
             return False
-        address = storage.alias_to_address[alias]
-        del storage.alias_to_address[alias]
-        del storage.address_to_alias[address]
+            
+        registered_address = storage.alias_to_address[normalized_alias]
+        
+        if registered_address != normalized_requesting_address:
+            return False 
+
+        del storage.alias_to_address[normalized_alias]
+        del storage.address_to_alias[registered_address]
         return True
 
     @staticmethod
     async def search(query: str, limit: int = 10) -> List[Dict]:
-        query = query.lower()
-        if query.startswith('@'):
-            query = query[1:]
+        query = normalize_address(query, is_alias=True)
 
         matches = []
         for alias, address in storage.alias_to_address.items():
-            if alias.startswith(f"@{query}"):
-                matches.append({"alias": alias, "address": address})
+            if alias.startswith(query): # El alias ya está en minúsculas y sin @
+                matches.append({"alias": '@' + alias, "address": address})
             
             if len(matches) >= limit:
                 break
@@ -291,9 +301,9 @@ class TransactionService:
 
     @staticmethod
     async def get_history(address: str, limit: int = 50, offset: int = 0) -> Dict:
-        address = address.lower()
-        user_txs = [tx for tx in storage.transactions if tx.get("from_address", "").lower() == address or 
-                    tx.get("to_address", "").lower() == address]
+        address = normalize_address(address)
+        user_txs = [tx for tx in storage.transactions if tx.get("from_address", "") == address or 
+                            tx.get("to_address", "") == address]
         user_txs.sort(key=lambda x: x.get("timestamp", ""), reverse=True)
         paginated = user_txs[offset:offset + limit]
         return {"address": address, "total_count": len(user_txs),
@@ -310,7 +320,6 @@ class TransactionService:
 alias_service = AliasService()
 transaction_service = TransactionService()
 
-# 🆕 NUEVO: Inicialización del CircleService
 if CircleService:
     circle_service = CircleService(
         api_key=config.CIRCLE_API_KEY,
@@ -320,29 +329,28 @@ if CircleService:
 else:
     circle_service = None
 
-# 🔄 MODIFICADO: Ahora se pasa 'circle_service' a 'BlockchainService'
 if BlockchainService:
     blockchain_service = BlockchainService(
         rpc_url=config.ARC_RPC_URL, 
         usdc_contract_address=config.ARC_USDC_ADDRESS, 
         storage_instance=storage,
-        circle_service=circle_service # ⬅️ Inyección de dependencia
+        circle_service=circle_service
     )
 else:
     blockchain_service = None
 
 ai_agent = None 
 if parse_payment_command:
-    print("✅ AI parsing function is available.")
+    print(" AI parsing function is available.")
 else:
-    print("⚠️ AI parsing function is missing.")
+    print(" AI parsing function is missing.")
 
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    print(f"🌥️ {config.APP_NAME} started")
+    print(f" {config.APP_NAME} started")
     yield
-    print(f"👋 {config.APP_NAME} stopped")
+    print(f" {config.APP_NAME} stopped")
 
 app = FastAPI(title=config.APP_NAME, version=config.API_VERSION, lifespan=lifespan)
 app.add_middleware(
@@ -354,7 +362,7 @@ app.add_middleware(
 )
 
 # ============================================================================
-# ROUTES (Se mantienen sin cambios)
+# ROUTES
 # ============================================================================
 
 @app.get("/")
@@ -378,11 +386,14 @@ async def get_alias(alias: str):
     address = await alias_service.resolve(alias)
     if not address:
         raise HTTPException(404, detail={"error": "alias_not_found"})
-    return {"alias": alias, "address": address}
+    return {"alias": '@' + normalize_address(alias, is_alias=True), "address": address}
 
 @app.get("/address/{address}/alias")
 async def get_address_alias(address: str):
-    return {"address": address, "alias": await alias_service.get_alias(address)}
+    alias = await alias_service.get_alias(address)
+    if not alias:
+        raise HTTPException(404, detail={"error": "alias_not_found"})
+    return {"address": normalize_address(address), "alias": '@' + alias}
 
 @app.get("/alias/search")
 async def search_aliases(query: str, limit: int = 10):
@@ -393,11 +404,12 @@ async def search_aliases(query: str, limit: int = 10):
     return aliases
 
 @app.delete("/alias/{alias}")
-async def delete_alias(alias: str, signature: str = Header(..., alias="X-Signature")):
-    success = await alias_service.delete(alias)
+async def delete_alias(alias: str, user_address: str = Header(..., alias="X-Wallet-Address")):
+    
+    success = await alias_service.delete(alias, user_address)
     if not success:
-        raise HTTPException(404, detail={"error": "alias_not_found"})
-    return {"success": True, "message": f"Alias {alias} deleted"}
+        raise HTTPException(403, detail={"error": "alias_not_found_or_not_owner"})
+    return {"success": True, "message": f"Alias @{alias} deleted"}
 
 # --- TRANSACTION & HISTORY ROUTES ---
 @app.get("/history/{address}")
@@ -411,7 +423,7 @@ async def get_transaction(tx_hash: str):
         raise HTTPException(404, detail={"error": "transaction_not_found"})
     return tx
 
-# --- ERROR HANDLERS (Se mantienen sin cambios) ---
+# --- ERROR HANDLERS ---
 @app.exception_handler(HTTPException)
 async def http_exception_handler(request: Request, exc: HTTPException):
     return JSONResponse(status_code=exc.status_code,
@@ -423,7 +435,7 @@ async def general_exception_handler(request: Request, exc: Exception):
                         content={"error": {"code": "internal_error", "message": str(exc)},
                                  "timestamp": datetime.utcnow().isoformat()})
 
-# --- AI & PAYMENT EXECUTION (Solo se modificó el pase de API Key) ---
+# --- AI & PAYMENT EXECUTION ---
 @app.post("/process_command", response_model=PaymentIntent)
 async def process_bulut_command(command: ProcessCommandRequest):
     if not parse_payment_command:
@@ -438,7 +450,7 @@ async def process_bulut_command(command: ProcessCommandRequest):
         )
         
         if intent_data.get("error"):
-            print(f"❌ AI Parsing Error: {intent_data.get('error')}")
+            print(f" AI Parsing Error: {intent_data.get('error')}")
             raise HTTPException(status_code=400, detail=intent_data.get("error"))
 
         intent_id = "intent_" + uuid.uuid4().hex[:16]
@@ -447,7 +459,7 @@ async def process_bulut_command(command: ProcessCommandRequest):
         return PaymentIntent(**intent_data)
 
     except Exception as e:
-        print(f"❌ /process_command Error: {str(e)}")
+        print(f" /process_command Error: {str(e)}")
         raise HTTPException(status_code=500, detail=f"Error processing command: {str(e)}")
 
 
@@ -460,13 +472,16 @@ async def execute_bulut_payment(request: ExecutePaymentRequest, user_address_hea
     payment_type = intent.payment_type
     intent_data = intent.intent
     
-    if user_address_header.lower() != request.user_address.lower():
-        raise HTTPException(status_code=403, detail="Header address does not match request body address.")
+    normalized_user_address = normalize_address(request.user_address)
+    normalized_header_address = normalize_address(user_address_header)
+    
+    if normalized_header_address != normalized_user_address:
+        raise HTTPException(status_code=403, detail="Header address does not match request body address (Origin address).")
 
     try:
         to_address = None
         if "recipient" in intent_data and "alias" in intent_data["recipient"]:
-            alias = intent_data["recipient"]["alias"].lower()
+            alias = intent_data["recipient"]["alias"] # Alias ya está normalizado por agent.py/pydantic
             to_address = await alias_service.resolve(alias)
             if not to_address:
                 raise HTTPException(status_code=404, detail={"error": "recipient_not_found", "alias": alias})
@@ -474,21 +489,19 @@ async def execute_bulut_payment(request: ExecutePaymentRequest, user_address_hea
         
         tx_result = {}
         
-        # 🔄 MODIFICADO: 'blockchain_service' ahora usa Circle para 'single'
         if payment_type == "single":
             tx_result = await blockchain_service.send_payment(
-                from_address=request.user_address,
+                from_address=normalized_user_address,
                 to_address=to_address,
                 amount=intent_data.get("amount", 0.0),
                 currency=intent_data.get("currency", "USDC"),
                 memo=intent_data.get("memo"),
-                # El signature ya no se usa para P2P si Circle lo gestiona
-                signature=request.user_signature 
+                signature=request.user_signature
             )
         
         elif payment_type == "subscription":
             tx_result = await blockchain_service.create_subscription(
-                from_address=request.user_address,
+                from_address=normalized_user_address,
                 to_address=to_address,
                 amount=intent_data.get("amount", 0.0),
                 frequency=intent_data.get("subscription", {}).get("frequency", "monthly"),
@@ -498,7 +511,7 @@ async def execute_bulut_payment(request: ExecutePaymentRequest, user_address_hea
         
         elif payment_type == "split":
             tx_result = await blockchain_service.split_payment(
-                from_address=request.user_address,
+                from_address=normalized_user_address,
                 recipients=intent_data.get("recipients", []),
                 total_amount=intent_data.get("amount", 0.0),
                 memo=intent_data.get("memo"),
@@ -513,8 +526,8 @@ async def execute_bulut_payment(request: ExecutePaymentRequest, user_address_hea
 
         log_data = {
             "transaction_hash": tx_result.get("transaction_hash"),
-            "from_address": request.user_address.lower(),
-            "to_address": to_address.lower() if to_address else "contract",
+            "from_address": normalized_user_address,
+            "to_address": normalize_address(to_address) if to_address else "contract",
             "amount": intent_data.get("amount"),
             "currency": intent_data.get("currency", "ARC"),
             "payment_type": payment_type,
