@@ -1,6 +1,7 @@
 import os
 import uuid
-import http
+import httpx
+from httpx import HTTPStatusError
 from typing import Dict, Any, Optional
 from datetime import datetime
 
@@ -34,7 +35,6 @@ class CircleService:
             )
         else:
             print("CircleService: Inicializado en modo SIMULACIÓN (faltan claves de Circle).")
-            # En modo simulación, usamos un almacenamiento simple para persistir 'wallets'
             self._mock_wallets: Dict[str, Dict] = {}
             self._init_demo_wallets()
 
@@ -45,20 +45,20 @@ class CircleService:
             "@bob": "0x8626f6940E2eb28930eFb4CeF49B2d1F2C9C1199",
         }
         for alias, address in demo_addresses.items():
-            self._mock_wallets[address] = {
+            # Corrección: Normalizar a minúsculas al guardar
+            normalized_address = address.lower()
+            self._mock_wallets[normalized_address] = {
                 "wallet_id": f"wal_mock_{alias[1:]}",
-                "address": address,
-                "user_id": alias, 
+                "address": address, 
+                "user_id": alias,  
                 "status": "active"
             }
-            
             
     async def get_wallet_by_address(self, address: str) -> Optional[Dict]:
         """Intenta mapear una dirección a una billetera (solo en modo simulación)."""
         if not self.is_real:
             return self._mock_wallets.get(address.lower())
         
-
         return None 
 
 
@@ -89,15 +89,16 @@ class CircleService:
                     "circle_id": data.get("id"),
                     "status": data.get("status")
                 }
-            except httpx.HTTPStatusError as e:
+            except HTTPStatusError as e:
                 return {"success": False, "error": f"Error de Circle: {e.response.text}"}
             except Exception as e:
                 return {"success": False, "error": f"Error general: {str(e)}"}
-        
+            
         else:
-            if not self.get_wallet_by_address(from_address):
-                 return {"success": False, "error": "Simulación: Billetera de origen no encontrada en Circle."}
-                 
+            # Corrección: Añadir await para llamar a la función async
+            if not await self.get_wallet_by_address(from_address):
+                return {"success": False, "error": "Simulación: Billetera de origen no encontrada en Circle."}
+                
             tx_hash = "0xCircleMockTx" + uuid.uuid4().hex[:20]
             return {
                 "success": True,
